@@ -68,6 +68,21 @@ static inline bool kasan_report_enabled(void)
 	return !current->kasan_depth;
 }
 
+#ifndef kasan_enabled
+/*
+ * Some archs may want to disable kasan callbacks.
+ */
+static inline bool kasan_enabled(void)
+{
+	return true;
+}
+#define kasan_enabled kasan_enabled
+#else
+#ifdef CONFIG_KASAN_INLINE
+#error "Kasan inline support cannot work with KASAN arch hooks"
+#endif
+#endif
+
 void kasan_report(unsigned long addr, size_t size,
 		bool is_write, unsigned long ip);
 

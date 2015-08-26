@@ -43,6 +43,9 @@ static void kasan_poison_shadow(const void *address, size_t size, u8 value)
 {
 	void *shadow_start, *shadow_end;
 
+	if (!kasan_enabled())
+		return;
+
 	shadow_start = kasan_mem_to_shadow(address);
 	shadow_end = kasan_mem_to_shadow(address + size);
 
@@ -51,6 +54,9 @@ static void kasan_poison_shadow(const void *address, size_t size, u8 value)
 
 void kasan_unpoison_shadow(const void *address, size_t size)
 {
+	if (!kasan_enabled())
+		return;
+
 	kasan_poison_shadow(address, size, 0);
 
 	if (size & KASAN_SHADOW_MASK) {
@@ -237,6 +243,9 @@ static __always_inline void check_memory_region(unsigned long addr,
 						size_t size, bool write)
 {
 	struct kasan_access_info info;
+
+	if (!kasan_enabled())
+		return;
 
 	if (unlikely(size == 0))
 		return;
