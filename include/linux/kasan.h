@@ -15,11 +15,14 @@ struct vm_struct;
 #include <asm/kasan.h>
 #include <linux/sched.h>
 
+#ifndef kasan_mem_to_shadow
 static inline void *kasan_mem_to_shadow(const void *addr)
 {
 	return (void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT)
 		+ KASAN_SHADOW_OFFSET;
 }
+#define kasan_mem_to_shadow kasan_mem_to_shadow
+#endif
 
 /* Enable reporting bugs after kasan_disable_current() */
 static inline void kasan_enable_current(void)
