@@ -80,11 +80,15 @@ END_MMU_FTR_SECTION_IFCLR(MMU_FTR_1T_SEGMENT)
 	/* Check virtual memmap region. To be patches at kernel boot */
 	cmpldi	cr0,r9,0xf
 	bne	1f
+2:
 .globl slb_miss_kernel_load_vmemmap
 slb_miss_kernel_load_vmemmap:
 	li	r11,0
 	b	6f
 1:
+	/* Kasan region same as vmemmap mapping */
+	cmpldi	cr0,r9,0xe
+	beq	2b
 #endif /* CONFIG_SPARSEMEM_VMEMMAP */
 
 	/* vmalloc mapping gets the encoding from the PACA as the mapping

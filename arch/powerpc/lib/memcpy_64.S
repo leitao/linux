@@ -10,7 +10,8 @@
 #include <asm/ppc_asm.h>
 
 	.align	7
-_GLOBAL_TOC(memcpy)
+KASAN_OVERRIDE(memcpy,__memcpy)
+_GLOBAL_TOC(__memcpy)
 BEGIN_FTR_SECTION
 #ifdef __LITTLE_ENDIAN__
 	cmpdi	cr7,r5,0

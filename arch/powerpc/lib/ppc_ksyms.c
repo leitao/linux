@@ -9,6 +9,16 @@ EXPORT_SYMBOL(memmove);
 EXPORT_SYMBOL(memcmp);
 EXPORT_SYMBOL(memchr);
 
+#ifdef CONFIG_PPC64
+/*
+ * There symbols are needed with kasan. We only
+ * have that enabled for ppc64 now.
+ */
+EXPORT_SYMBOL(__memcpy);
+EXPORT_SYMBOL(__memset);
+EXPORT_SYMBOL(__memmove);
+#endif
+
 EXPORT_SYMBOL(strcpy);
 EXPORT_SYMBOL(strncpy);
 EXPORT_SYMBOL(strcat);

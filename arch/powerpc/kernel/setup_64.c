@@ -69,6 +69,7 @@
 #include <asm/kvm_ppc.h>
 #include <asm/hugetlb.h>
 #include <asm/epapr_hcalls.h>
+#include <asm/kasan.h>
 
 #ifdef DEBUG
 #define DBG(fmt...) udbg_printf(fmt)
@@ -707,6 +708,8 @@ void __init setup_arch(char **cmdline_p)
 
 	/* Initialize the MMU context management stuff */
 	mmu_context_init();
+
+	kasan_init();
 
 	/* Interrupt code needs to be 64K-aligned */
 	if ((unsigned long)_stext & 0xffff)

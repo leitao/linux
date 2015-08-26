@@ -12,7 +12,8 @@
 #include <asm/errno.h>
 #include <asm/ppc_asm.h>
 
-_GLOBAL(memset)
+KASAN_OVERRIDE(memset,__memset)
+_GLOBAL(__memset)
 	neg	r0,r3
 	rlwimi	r4,r4,8,16,23
 	andi.	r0,r0,7			/* # bytes to be 8-byte aligned */
@@ -77,7 +78,8 @@ _GLOBAL(memset)
 	stb	r4,0(r6)
 	blr
 
-_GLOBAL_TOC(memmove)
+KASAN_OVERRIDE(memmove,__memmove)
+_GLOBAL_TOC(__memmove)
 	cmplw	0,r3,r4
 	bgt	backwards_memcpy
 	b	memcpy

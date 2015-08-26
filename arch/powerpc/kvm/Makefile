@@ -3,6 +3,7 @@
 #
 
 subdir-ccflags-$(CONFIG_PPC_WERROR) := -Werror
+KASAN_SANITIZE :=n
 
 ccflags-y := -Ivirt/kvm -Iarch/powerpc/kvm
 KVM := ../../../virt/kvm

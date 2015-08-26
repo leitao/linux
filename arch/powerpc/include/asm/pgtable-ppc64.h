@@ -80,6 +80,7 @@
 #define KERNEL_REGION_ID	(REGION_ID(PAGE_OFFSET))
 #define VMEMMAP_REGION_ID	(0xfUL)	/* Server only */
 #define USER_REGION_ID		(0UL)
+#define KASAN_REGION_ID		(0xeUL) /* Server only */
 
 /*
  * Defines the address of the vmemap area, in its own region on

@@ -26,6 +26,11 @@ CFLAGS_REMOVE_ftrace.o = -pg -mno-sched-epilog
 CFLAGS_REMOVE_time.o = -pg -mno-sched-epilog
 endif
 
+KASAN_SANITIZE_prom_init.o := n
+KASAN_SANITIZE_align.o := n
+KASAN_SANITIZE_dbell.o := n
+KASAN_SANITIZE_setup_64.o := n
+
 obj-y				:= cputable.o ptrace.o syscalls.o \
 				   irq.o align.o signal_32.o pmc.o vdso.o \
 				   process.o systbl.o idle.o \

@@ -226,6 +226,11 @@ name:
 
 #define DOTSYM(a)	a
 
+#define KASAN_OVERRIDE(x, y) \
+	.weak x;	     \
+	.set x, y
+
+
 #else
 
 #define XGLUE(a,b) a##b
@@ -263,6 +268,11 @@ GLUE(.,name):
 
 #define DOTSYM(a)	GLUE(.,a)
 
+#define KASAN_OVERRIDE(x, y)	\
+	.weak x;		\
+	.set x, y;		\
+	.weak DOTSYM(x);	\
+	.set DOTSYM(x), DOTSYM(y)
 #endif
 
 #else /* 32-bit */

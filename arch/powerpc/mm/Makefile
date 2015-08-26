@@ -6,6 +6,11 @@ subdir-ccflags-$(CONFIG_PPC_WERROR) := -Werror
 
 ccflags-$(CONFIG_PPC64)	:= $(NO_MINIMAL_TOC)
 
+KASAN_SANITIZE_kasan_init.o	:= n
+KASAN_SANITIZE_hash_utils_64.o	:= n
+KASAN_SANITIZE_hugetlbpage.o	:= n
+KASAN_SANITIZE_slb.o	:= n
+
 obj-y				:= fault.o mem.o pgtable.o mmap.o \
 				   init_$(CONFIG_WORD_SIZE).o \
 				   pgtable_$(CONFIG_WORD_SIZE).o
@@ -37,3 +42,5 @@ obj-$(CONFIG_NOT_COHERENT_CACHE) += dma-noncoherent.o
 obj-$(CONFIG_HIGHMEM)		+= highmem.o
 obj-$(CONFIG_PPC_COPRO_BASE)	+= copro_fault.o
 obj-$(CONFIG_SPAPR_TCE_IOMMU)	+= mmu_context_iommu.o
+
+obj-$(CONFIG_KASAN)		+= kasan_init.o
