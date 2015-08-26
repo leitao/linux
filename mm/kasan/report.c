@@ -85,9 +85,14 @@ static void print_error_description(struct kasan_access_info *info)
 
 static inline bool kernel_or_module_addr(const void *addr)
 {
-	return (addr >= (void *)_stext && addr < (void *)_end)
-		|| (addr >= (void *)MODULES_VADDR
-			&& addr < (void *)MODULES_END);
+	if (addr >= (void *)_stext && addr < (void *)_end)
+		return true;
+#if defined(CONFIG_MODULES) && defined(MODULES_VADDR)
+	if (addr >= (void *)MODULES_VADDR
+			&& addr < (void *)MODULES_END)
+		return true;
+#endif
+	return false;
 }
 
 static inline bool init_task_stack_addr(const void *addr)
