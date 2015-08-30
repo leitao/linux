@@ -1,6 +1,9 @@
 config HAVE_ARCH_KASAN
 	bool
 
+config HAVE_ARCH_KASAN_INLINE
+	bool
+
 if HAVE_ARCH_KASAN
 
 config KASAN
