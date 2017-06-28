@@ -47,12 +47,12 @@ void* ping(void *not_used)
 		"xxmrghd 0, 33, 34 ;"
 
 
-		// Wait > 10s so we have a sufficient amount of context
+		// Wait ~8s so we have a sufficient amount of context
 		// switches so load_fp and load_vec overflow and MSR.FP, MSR.VEC,
 		// and MSR.VSX are disabled.
 		"       lis	 7, 0x1       ;"
 		"       ori      7, 7, 0xBFFE ;"
-		"       sldi     7, 7, 16     ;"
+		"       sldi     7, 7, 15     ;"
 		"1:	addi     7, 7, -1     ;"
 		"       cmpdi    7, 0         ;"
 		"       bne      1b           ;"
