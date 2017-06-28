@@ -320,6 +320,9 @@ dont_backup_fp:
 	 *
 	 *	Call with IRQs off, stacks get all out of sync for
 	 *	some periods in here!
+	 *   Second argument:
+	 *     - If VEC/FP/VSX is set (1), then grab from the 'live' (Just reclaimed
+	 *       - Otherwise, grab the values from the ckfp/ckvec area
 	 */
 _GLOBAL(__tm_recheckpoint)
 	mfcr	r5
@@ -372,8 +375,8 @@ _GLOBAL(__tm_recheckpoint)
 
 	addi	r8, r3, THREAD_CKVRSTATE
 	li	r5, VRSTATE_VSCR
-	lvx	v0, r8, r5
-	mtvscr	v0
+	lvx	v1, r8, r5
+	mtvscr	v1
 	REST_32VRS(0, r5, r8)			/* r5 scratch, r8 ptr */
 dont_restore_vec:
 	ld	r5, THREAD_CKVRSAVE(r3)

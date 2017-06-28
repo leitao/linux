@@ -22,6 +22,8 @@ int passed;
 
 void* ping(void *not_used)
 {
+	uint64_t *a = malloc(1024);
+	uint64_t *b = malloc(1024);
 
 	asm goto(
 		// r3 = 0x5555555555555555
@@ -82,22 +84,26 @@ void* ping(void *not_used)
 		// Save low half - LSB (64bit) - from vs0 after transaction to r6
 		// We mess with vs3, but it's not important.
 		"xxsldwi 3, 0, 0, 2           ;"
-		"mfvsrd  6, 3                 ;"
+		"mfvsrd  6, 3                 \n;"
 
 		// N.B. r3 and r4 never changed since they were used to
 		// construct the initial vs0 value, hence we can use them to do the
 		// comparison. r3 and r4 will be destroy but it's not important.
+		"std   3, 0(%0)	\n;"
+		"std   5, 0(%1)	\n;"
 		"cmpd  3, 5                ;" // compare r3 to r5
 		"bne   %[value_mismatch]      ;"
 		"cmpd  4, 6                ;" // compare r4 to r6
 		"bne   %[value_mismatch]      ;"
 		"b     %[value_ok]            ;"
 		:
-		:
+		: "r" (a), "r" (b)
 		: "r3", "r4", "vs33", "vs34", "vs0", "vs10", "fr10", "r7", "r5", "r6", "vs3"
 		: value_mismatch, value_ok
 		);
 value_mismatch:
+		printf("a = %"PRIx64"\n", *a);
+		printf("b = %"PRIx64"\n", *b);
 		passed = 0;
 		return NULL;
 value_ok:
