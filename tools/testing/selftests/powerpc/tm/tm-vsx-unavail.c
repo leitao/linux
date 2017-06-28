@@ -46,10 +46,6 @@ void* ping(void *not_used)
 		// vs0 = (r3 || r4) = 0x5555555555555555FFFFFFFFFFFFFFFF
 		"xxmrghd 0, 33, 34 ;"
 
-		// Any floating-point instruction in here.
-		// N.B. 'fmr' is *not touching* any previously set register,
-		// i.e. it's not touching vs0.
-		"fmr    10, 10     ;"
 
 		// Wait > 10s so we have a sufficient amount of context
 		// switches so load_fp and load_vec overflow and MSR.FP, MSR.VEC,
@@ -60,6 +56,11 @@ void* ping(void *not_used)
 		"1:	addi     7, 7, -1     ;"
 		"       cmpdi    7, 0         ;"
 		"       bne      1b           ;"
+
+		// Any floating-point instruction in here.
+		// N.B. 'fmr' is *not touching* any previously set register,
+		// i.e. it's not touching vs0.
+		"fmr    10, 10     ;"
 
 		// vs0 is *still* 0x5555555555555555FFFFFFFFFFFFFFFF, right?
 		// So let's get in a transaction and cause a VSX unavailable exception.
@@ -86,9 +87,9 @@ void* ping(void *not_used)
 		// N.B. r3 and r4 never changed since they were used to
 		// construct the initial vs0 value, hence we can use them to do the
 		// comparison. r3 and r4 will be destroy but it's not important.
-		"and.  3, 3, 5                ;" // compare r3 to r5
+		"cmpd  3, 5                ;" // compare r3 to r5
 		"bne   %[value_mismatch]      ;"
-		"and.  4, 4, 6                ;" // compare r4 to r6
+		"cmpd  4, 6                ;" // compare r4 to r6
 		"bne   %[value_mismatch]      ;"
 		"b     %[value_ok]            ;"
 		:
