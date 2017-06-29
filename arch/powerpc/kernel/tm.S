@@ -259,9 +259,12 @@ _GLOBAL(tm_reclaim)
 
 	addi	r7, r3, THREAD_CKVRSTATE
 	SAVE_32VRS(0, r6, r7)	/* r6 scratch, r7 transact vr state */
+	/* Corrupting v0, should restore later */
 	mfvscr	v0
 	li	r6, VRSTATE_VSCR
 	stvx	v0, r7, r6
+	/* Restore v0, otherwise we might recheckpoint the wrong value */
+	REST_VR(0, r6, r7)
 dont_backup_vec:
 	mfspr	r0, SPRN_VRSAVE
 	std	r0, THREAD_CKVRSAVE(r3)
