@@ -870,21 +870,22 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 	 * state is the same as the live state. We need to copy the
 	 * live state to the checkpointed state so that when the
 	 * transaction is restored, the checkpointed state is correct
-	 * and the aborted transaction sees the correct state. We use
-	 * ckpt_regs.msr here as that's what tm_reclaim will use to
-	 * determine if it's going to write the checkpointed state or
-	 * not. So either this will write the checkpointed registers,
-	 * or reclaim will. Similarly for VMX.
+	 * and the aborted transaction sees the correct state. So
+	 * either this will write the checkpointed registers, or
+	 * reclaim will. Similarly for VMX.
 	 */
-	if ((thr->ckpt_regs.msr & MSR_FP) == 0)
+	if ((thr->regs->msr & MSR_FP) == 0)
 		memcpy(&thr->ckfp_state, &thr->fp_state,
 		       sizeof(struct thread_fp_state));
-	if ((thr->ckpt_regs.msr & MSR_VEC) == 0)
+	if ((thr->regs->msr & MSR_VEC) == 0)
 		memcpy(&thr->ckvr_state, &thr->vr_state,
 		       sizeof(struct thread_vr_state));
 
 	giveup_all(container_of(thr, struct task_struct, thread));
 
+	/* After giveup_all(), ckpt_regs.msr contains the same value
+	 * of regs->msr when we entered in kernel space.
+	 */
 	tm_reclaim(thr, thr->ckpt_regs.msr, cause);
 }
 
