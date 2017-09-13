@@ -124,6 +124,8 @@ static const struct pt_regs_offset regoffset_table[] = {
 static void flush_tmregs_to_thread(struct task_struct *tsk)
 {
 	/*
+	 * If CPU has no TM support, return.
+	 *
 	 * If task is not current, it will have been flushed already to
 	 * it's thread_struct during __switch_to().
 	 *
@@ -131,7 +133,7 @@ static void flush_tmregs_to_thread(struct task_struct *tsk)
 	 * in the appropriate thread structures from live.
 	 */
 
-	if (tsk != current)
+	if (!cpu_has_feature(CPU_FTR_TM) || tsk != current)
 		return;
 
 	if (MSR_TM_SUSPENDED(mfmsr())) {
