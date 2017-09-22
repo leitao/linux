@@ -455,6 +455,9 @@ static long restore_tm_sigcontexts(struct task_struct *tsk,
 	/* pull in MSR TM from user context */
 	regs->msr = (regs->msr & ~MSR_TS_MASK) | (msr & MSR_TS_MASK);
 
+	// gromero
+	regs->msr |= MSR_TM;
+
 	/* pull in MSR LE from user context */
 	regs->msr = (regs->msr & ~MSR_LE) | (msr & MSR_LE);
 
