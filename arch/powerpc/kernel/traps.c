@@ -1686,13 +1686,13 @@ void fp_unavailable_tm(struct pt_regs *regs)
 	/* Enable FP for the task: */
 	regs->msr |= (MSR_FP | current->thread.fpexc_mode);
 
-	/* This loads and recheckpoints the FP registers from
-	 * thread.fpr[].  They will remain in registers after the
-	 * checkpoint so we don't need to reload them after.
-	 * If VMX is in use, the VRs now hold checkpointed values,
-	 * so we don't want to load the VRs from the thread_struct.
+	/* This loads and recheckpoints all the registers from the checkpoint area.
+	 * They will remain in registers after the checkpoint so we don't need
+	 * to reload them after.  If VMX is in use, the VRs now hold
+	 * checkpointed values, so we don't want to load the VRs from the
+	 * thread_struct.
 	 */
-	tm_recheckpoint(&current->thread, MSR_FP);
+	tm_recheckpoint(&current->thread, regs->msr | MSR_FP | MSR_VEC);
 
 	/* If VMX is in use, get the transactional values back */
 	if (regs->msr & MSR_VEC) {
@@ -1714,7 +1714,7 @@ void altivec_unavailable_tm(struct pt_regs *regs)
 		 regs->nip, regs->msr);
 	tm_reclaim_current(TM_CAUSE_FAC_UNAV);
 	regs->msr |= MSR_VEC;
-	tm_recheckpoint(&current->thread, MSR_VEC);
+	tm_recheckpoint(&current->thread, regs->msr | MSR_FP | MSR_VEC);
 	current->thread.used_vr = 1;
 
 	if (regs->msr & MSR_FP) {
@@ -1756,7 +1756,7 @@ void vsx_unavailable_tm(struct pt_regs *regs)
 	/* This loads & recheckpoints FP and VRs; but we have
 	 * to be sure not to overwrite previously-valid state.
 	 */
-	tm_recheckpoint(&current->thread, regs->msr & ~orig_msr);
+	tm_recheckpoint(&current->thread, regs->msr | MSR_FP | MSR_VEC);
 
 	msr_check_and_set(orig_msr & (MSR_FP | MSR_VEC));
 
