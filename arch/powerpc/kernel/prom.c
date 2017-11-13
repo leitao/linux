@@ -660,7 +660,7 @@ static void __init early_reserve_mem(void)
 }
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
-static bool tm_disabled __initdata;
+static bool tm_cmdline_disabled __initdata;
 
 static int __init parse_ppc_tm(char *str)
 {
@@ -669,7 +669,7 @@ static int __init parse_ppc_tm(char *str)
 	if (kstrtobool(str, &res))
 		return -EINVAL;
 
-	tm_disabled = !res;
+	tm_cmdline_disabled = !res;
 
 	return 0;
 }
@@ -677,7 +677,7 @@ early_param("ppc_tm", parse_ppc_tm);
 
 static void __init tm_init(void)
 {
-	if (tm_disabled) {
+	if (tm_cmdline_disabled) {
 		pr_info("Disabling hardware transactional memory (HTM)\n");
 		cur_cpu_spec->cpu_user_features2 &=
 			~(PPC_FEATURE2_HTM_NOSC | PPC_FEATURE2_HTM |
