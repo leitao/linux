@@ -57,11 +57,11 @@ static inline bool failure_is_nesting(void)
 	return (__builtin_get_texasru() & 0x400000);
 }
 
-static inline int tcheck(void)
+static inline uint8_t tcheck(void)
 {
-	long cr;
-	asm volatile ("tcheck 0" : "=r"(cr) : : "cr0");
-	return (cr >> 28) & 4;
+	unsigned long cr;
+	asm volatile ("tcheck 0; mfcr %0;" : "=r"(cr) : : "cr0");
+	return (cr >> 28) & 0xF;
 }
 
 static inline bool tcheck_doomed(void)
@@ -81,7 +81,7 @@ static inline bool tcheck_suspended(void)
 
 static inline bool tcheck_transactional(void)
 {
-	return tcheck() & 6;
+	return (tcheck_active()) || (tcheck_suspended());
 }
 
 #endif /* _SELFTESTS_POWERPC_TM_TM_H */
