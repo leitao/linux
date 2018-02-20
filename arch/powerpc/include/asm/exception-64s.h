@@ -35,6 +35,7 @@
  * implementations as possible.
  */
 #include <asm/head-64.h>
+#include <asm/tm.h>
 
 /* PACA save area offsets (exgen, exmc, etc) */
 #define EX_R9		0
@@ -154,6 +155,26 @@
 	RFI_FLUSH_SLOT;							\
 	hrfid;								\
 	b	hrfi_flush_fallback
+
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+#define TM_KERNEL_ENTRY		                                        \
+	ld	r3,_MSR(r1);			                        \
+	/* Probably don't need to check if coming from user/kernel */	\
+	/* If TM is suspended or active then we must have come from*/	\
+	/* userspace */							\
+	andi.	r0,r3,MSR_PR;						\
+	beq	1f;							\
+	rldicl. r3,r3,(64-MSR_TS_LG),(64-2); /* SUSPENDED or ACTIVE*/   \
+	beql+	1f;                   	/* Not SUSPENDED or ACTIVE */   \
+	bl	save_nvgprs;						\
+	RECONCILE_IRQ_STATE(r10,r11);					\
+	li	r3,TM_CAUSE_MISC;					\
+	bl	tm_reclaim_current;	/* uint8 cause		   */	\
+1:
+
+#else /* CONFIG_PPC_TRANSACTIONAL_MEM */
+#define TM_KERNEL_ENTRY
+#endif /* CONFIG_PPC_TRANSACTIONAL_MEM */
 
 #ifdef CONFIG_RELOCATABLE
 #define __EXCEPTION_RELON_PROLOG_PSERIES_1(label, h)			\
@@ -704,6 +725,9 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	EXCEPTION_PROLOG_COMMON(trap, area);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	/* This is going to need to go somewhere else as well */\
+	/* See comment in tm_recheckpoint()		      */\
+	TM_KERNEL_ENTRY;					\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr;						\
 	b	ret
@@ -718,6 +742,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	EXCEPTION_PROLOG_COMMON_3(trap);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	TM_KERNEL_ENTRY;					\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr
 
