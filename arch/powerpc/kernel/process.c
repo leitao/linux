@@ -500,11 +500,20 @@ void giveup_all(struct task_struct *tsk)
 
 	usermsr = tsk->thread.regs->msr;
 
+	/*
+	 * The *_unavailable_tm() functions might call this in a
+	 * transaction but with not FP or VEC or VSX meaning that the
+	 * if condition below will be true, this is bad since we will
+	 * have preformed a reclaim but not set the TIF flag which
+	 * must be set in order to trigger the recheckpoint.
+	 *
+	 * possibleTODO: Move setting the TIF flag into reclaim code
+	 */
+	check_if_tm_restore_required(tsk);
 	if ((usermsr & msr_all_available) == 0)
 		return;
 
 	msr_check_and_set(msr_all_available);
-	check_if_tm_restore_required(tsk);
 
 	WARN_ON((usermsr & MSR_VSX) && !((usermsr & MSR_FP) && (usermsr & MSR_VEC)));
 
