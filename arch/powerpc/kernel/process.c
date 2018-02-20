@@ -951,6 +951,23 @@ void tm_recheckpoint(struct thread_struct *thread)
 	if (!(thread->regs->msr & MSR_TM))
 		return;
 
+	/*
+	 * This is 'that' comment.
+	 *
+	 * If we get where with tm suspended or active then something
+	 * has gone wrong. I've added this now as a proof of concept.
+	 *
+	 * The problem I'm seeing without it is an attempt to
+	 * recheckpoint a CPU without a previous reclaim.
+	 *
+	 * I'm probably missed an exception entry with the
+	 * TM_KERNEL_ENTRY macro. Should be easy enough to find.
+	 */
+	if (MSR_TM_ACTIVE(mfmsr()))
+		return;
+
+	tm_enable();
+
 	/* We really can't be interrupted here as the TEXASR registers can't
 	 * change and later in the trecheckpoint code, we have a userspace R1.
 	 * So let's hard disable over this region.
@@ -1009,6 +1026,13 @@ static inline void tm_recheckpoint_new_task(struct task_struct *new)
 static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
+	/*
+	 * So, with the rework none of this code should not be needed.
+	 * I've left in the reclaim for now. This *should* save us
+	 * from any mistake in the new code. Also the
+	 * enabling/disabling logic of MSR_TM really should be
+	 * refactored into a common way with MSR_{FP,VEC,VSX}
+	 */
 	if (cpu_has_feature(CPU_FTR_TM)) {
 		if (tm_enabled(prev) || tm_enabled(new))
 			tm_enable();
@@ -1016,11 +1040,14 @@ static inline void __switch_to_tm(struct task_struct *prev,
 		if (tm_enabled(prev)) {
 			prev->thread.load_tm++;
 			tm_reclaim_task(prev);
-			if (!MSR_TM_ACTIVE(prev->thread.regs->msr) && prev->thread.load_tm == 0)
-				prev->thread.regs->msr &= ~MSR_TM;
+			/*
+			 * The disabling logic may be confused don't
+			 * disable for now
+			 *
+			 * if (!MSR_TM_ACTIVE(prev->thread.regs->msr) && prev->thread.load_tm == 0)
+			 *	prev->thread.regs->msr &= ~MSR_TM;
+			 */
 		}
-
-		tm_recheckpoint_new_task(new);
 	}
 }
 
@@ -1054,6 +1081,8 @@ void restore_tm_state(struct pt_regs *regs)
 
 	msr_diff = current->thread.ckpt_regs.msr & ~regs->msr;
 	msr_diff &= MSR_FP | MSR_VEC | MSR_VSX;
+
+	tm_recheckpoint(&current->thread);
 
 	/* Ensure that restore_math() will restore */
 	if (msr_diff & MSR_FP)
