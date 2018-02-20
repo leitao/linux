@@ -568,21 +568,20 @@ static long restore_tm_sigcontexts(struct task_struct *tsk,
 		}
 	}
 #endif
-	tm_enable();
 	/* Make sure the transaction is marked as failed */
 	tsk->thread.tm_texasr |= TEXASR_FS;
-	/* This loads the checkpointed FP/VEC state, if used */
-	tm_recheckpoint(&tsk->thread);
 
-	msr_check_and_set(msr & (MSR_FP | MSR_VEC));
-	if (msr & MSR_FP) {
-		load_fp_state(&tsk->thread.fp_state);
-		regs->msr |= (MSR_FP | tsk->thread.fpexc_mode);
-	}
-	if (msr & MSR_VEC) {
-		load_vr_state(&tsk->thread.vr_state);
-		regs->msr |= MSR_VEC;
-	}
+	/*
+	 * I believe this is only nessesary if the
+	 * clear_thread_flag(TIF_RESTORE_TM); in restore_tm_state()
+	 * stays before the if (!MSR_TM_ACTIVE(regs->msr).
+	 *
+	 * Actually no, we should follow the comment in
+	 * restore_tm_state() but this should ALSO be here if
+	 * if the signal handler does something crazy like 'generate'
+	 * a transaction.
+	 */
+	set_thread_flag(TIF_RESTORE_TM);
 
 	return err;
 }
@@ -734,6 +733,22 @@ int sys_rt_sigreturn(unsigned long r3, unsigned long r4, unsigned long r5,
 	if (MSR_TM_SUSPENDED(mfmsr()))
 		tm_reclaim_current(0);
 
+	/*
+	 * There is a universe where the signal handler did something
+	 * crazy like drop the transaction entirely. That is, the main
+	 * thread was in transactional or suspended mode and the
+	 * signal handler has put them in non transactional mode.
+	 * In that case we'll need to clear the TIF_RESTORE_TM flag.
+	 * I'll need to ponder it exactly but for now thats all I
+	 * think that needs to be done. At the moment it all works
+	 * because no signal hanlder is nuts enough to do it.
+	 *
+	 * Add... somewhere... I guess in the else block, in the
+	 * after the #endif
+	 *
+	 * clear_thread_flag(TIF_RESTORE_TM);
+	 */
+
 	if (__get_user(msr, &uc->uc_mcontext.gp_regs[PT_MSR]))
 		goto badframe;
 	if (MSR_TM_ACTIVE(msr)) {
@@ -748,6 +763,8 @@ int sys_rt_sigreturn(unsigned long r3, unsigned long r4, unsigned long r5,
 	else
 	/* Fall through, for non-TM restore */
 #endif
+	clear_thread_flag(TIF_RESTORE_TM);
+
 	if (restore_sigcontext(current, NULL, 1, &uc->uc_mcontext))
 		goto badframe;
 

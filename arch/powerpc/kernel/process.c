@@ -1070,9 +1070,20 @@ void restore_tm_state(struct pt_regs *regs)
 	 * again, anything else could lead to an incorrect ckpt_msr being
 	 * saved and therefore incorrect signal contexts.
 	 */
-	clear_thread_flag(TIF_RESTORE_TM);
+
+	/*
+	 * So, on signals we're going to have cleared the TM bits from
+	 * the MSR, meaning that heading to userspace signal handler
+	 * this will be true.
+	 * I'm not convinced clearing the TIF_RESTORE_TM flag is a
+	 * good idea however, we should do it only if we actually
+	 * recheckpoint, which we'll need to do once the signal
+	 * hanlder is done and we're returning to the main thread of
+	 * execution.
+	 */
 	if (!MSR_TM_ACTIVE(regs->msr))
 		return;
+	clear_thread_flag(TIF_RESTORE_TM);
 
 	msr_diff = current->thread.ckpt_regs.msr & ~regs->msr;
 	msr_diff &= MSR_FP | MSR_VEC | MSR_VSX;
