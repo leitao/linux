@@ -859,6 +859,8 @@ static inline bool tm_enabled(struct task_struct *tsk)
 	return tsk && tsk->thread.regs && (tsk->thread.regs->msr & MSR_TM);
 }
 
+static inline void save_sprs(struct thread_struct *t);
+
 static void tm_reclaim_thread(struct thread_struct *thr, uint8_t cause)
 {
 	/*
@@ -878,6 +880,8 @@ static void tm_reclaim_thread(struct thread_struct *thr, uint8_t cause)
 	 */
 	if (!MSR_TM_SUSPENDED(mfmsr()))
 		return;
+
+	save_sprs(thr);
 
 	giveup_all(container_of(thr, struct task_struct, thread));
 
@@ -991,6 +995,37 @@ void tm_recheckpoint(struct thread_struct *thread)
 
 	__tm_recheckpoint(thread);
 
+	/*
+	 * This is a stripped down restore_sprs(), we need to do this
+	 * now as we might go straight out to userspace and currently
+	 * the checkpointed values are on the CPU.
+	 *
+	 * TODO: Improve
+	 */
+#ifdef CONFIG_ALTIVEC
+	if (cpu_has_feature(CPU_FTR_ALTIVEC))
+		mtspr(SPRN_VRSAVE, thread->vrsave);
+#endif
+#ifdef CONFIG_PPC_BOOK3S_64
+	if (cpu_has_feature(CPU_FTR_DSCR)) {
+		u64 dscr = get_paca()->dscr_default;
+		if (thread->dscr_inherit)
+			dscr = thread->dscr;
+
+		mtspr(SPRN_DSCR, dscr);
+	}
+
+	if (cpu_has_feature(CPU_FTR_ARCH_207S)) {
+		/* The EBB regs aren't checkpointed */
+		mtspr(SPRN_FSCR, thread->fscr);
+
+		mtspr(SPRN_TAR, thread->tar);
+	}
+
+	/* I think we don't need to */
+	if (cpu_has_feature(CPU_FTR_ARCH_300))
+		mtspr(SPRN_TIDR, thread->tidr);
+#endif
 	local_irq_restore(flags);
 }
 
@@ -1193,6 +1228,11 @@ struct task_struct *__switch_to(struct task_struct *prev,
 #endif
 
 	new_thread = &new->thread;
+	/*
+	 * Why not &prev->thread; ?
+	 * What is the difference between &prev->thread and
+	 * &current->thread ?
+	 */
 	old_thread = &current->thread;
 
 	WARN_ON(!irqs_disabled());
@@ -1237,8 +1277,16 @@ struct task_struct *__switch_to(struct task_struct *prev,
 	/*
 	 * We need to save SPRs before treclaim/trecheckpoint as these will
 	 * change a number of them.
+	 *
+	 * Because we're now reclaiming on kernel entry, we've had to
+	 * already save them. Don't do it again.
+	 * Note: To deliver a signal in the signal context, we'll have
+	 * turned off TM because we don't want the signal context to
+	 * have the transactional state of the main thread - what if
+	 * we go through switch to at that point? Can we?
 	 */
-	save_sprs(&prev->thread);
+	if (!prev->thread.regs || !MSR_TM_ACTIVE(prev->thread.regs->msr))
+		save_sprs(&prev->thread);
 
 	/* Save FPU, Altivec, VSX and SPE state */
 	giveup_all(prev);
@@ -1260,8 +1308,13 @@ struct task_struct *__switch_to(struct task_struct *prev,
 	 * for this is we manually create a stack frame for new tasks that
 	 * directly returns through ret_from_fork() or
 	 * ret_from_kernel_thread(). See copy_thread() for details.
+	 *
+	 * It isn't stricly nessesary that we avoid the restore here
+	 * because we'll simply restore again after the recheckpoint,
+	 * but we can avoid it for performance reasons.
 	 */
-	restore_sprs(old_thread, new_thread);
+	if (!new_thread->regs || !MSR_TM_ACTIVE(new_thread->regs->msr))
+		restore_sprs(old_thread, new_thread);
 
 	last = _switch(old_thread, new_thread);
 
