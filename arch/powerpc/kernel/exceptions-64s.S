@@ -559,6 +559,11 @@ EXC_COMMON_BEGIN(data_access_common)
 	li	r5,0x300
 	std	r3,_DAR(r1)
 	std	r4,_DSISR(r1)
+	/*
+	 * Can't do TM_KERNEL_ENTRY here as do_hash_page might jump to
+	 * very late in the expection exit code, well after any
+	 * possiblity of doing a recheckpoint
+	 */
 BEGIN_MMU_FTR_SECTION
 	b	do_hash_page		/* Try to handle as hpte fault */
 MMU_FTR_SECTION_ELSE
@@ -603,6 +608,11 @@ EXC_COMMON_BEGIN(instruction_access_common)
 	li	r5,0x400
 	std	r3,_DAR(r1)
 	std	r4,_DSISR(r1)
+	/*
+	 * Can't do TM_KERNEL_ENTRY here as do_hash_page might jump to
+	 * very late in the expection exit code, well after any
+	 * possiblity of doing a recheckpoint
+	 */
 BEGIN_MMU_FTR_SECTION
 	b	do_hash_page		/* Try to handle as hpte fault */
 MMU_FTR_SECTION_ELSE
@@ -813,6 +823,7 @@ EXC_COMMON_BEGIN(alignment_common)
 	std	r4,_DSISR(r1)
 	bl	save_nvgprs
 	RECONCILE_IRQ_STATE(r10, r11)
+	TM_KERNEL_ENTRY
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	bl	alignment_exception
 	b	ret_from_except
@@ -1736,7 +1747,9 @@ do_hash_page:
 
 /* Here we have a page fault that hash_page can't handle. */
 handle_page_fault:
-11:	andis.  r0,r4,DSISR_DABRMATCH@h
+11:	TM_KERNEL_ENTRY
+	ld      r4,_DSISR(r1)
+	andis.  r0,r4,DSISR_DABRMATCH@h
 	bne-    handle_dabr_fault
 	ld	r4,_DAR(r1)
 	ld	r5,_DSISR(r1)
@@ -1753,6 +1766,10 @@ handle_page_fault:
 
 /* We have a data breakpoint exception - handle it */
 handle_dabr_fault:
+	/*
+	 * Don't need to do TM_KERNEL_ENTRY here as we'll
+	 * come from handle_page_fault: which has done it already
+	 */
 	bl	save_nvgprs
 	ld      r4,_DAR(r1)
 	ld      r5,_DSISR(r1)
@@ -1766,7 +1783,14 @@ handle_dabr_fault:
  * the PTE insertion
  */
 13:	bl	save_nvgprs
-	mr	r5,r3
+	/*
+	 * Use a non-volatile as the TM code will call, r3 is the
+	 * return value from __hash_page() so not exactly easy to get
+	 * again.
+	 */
+	mr	r31,r3
+	TM_KERNEL_ENTRY
+	mr	r5, r31
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	ld	r4,_DAR(r1)
 	bl	low_hash_fault
@@ -1781,7 +1805,8 @@ handle_dabr_fault:
  * the access, or panic if there isn't a handler.
  */
 77:	bl	save_nvgprs
-	mr	r4,r3
+	TM_KERNEL_ENTRY
+	ld	r4,_DAR(r1)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	li	r5,SIGSEGV
 	bl	bad_page_fault
