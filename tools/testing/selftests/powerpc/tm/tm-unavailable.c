@@ -315,7 +315,7 @@ void test_fp_vec(int fp, int vec, pthread_attr_t *attr)
 		rc = pthread_create(&t0, attr, ping, (void *) &flags);
 		if (rc)
 			pr_err(rc, "pthread_create()");
-		rc = pthread_setname_np(t0, "ping");
+		rc = pthread_setname_np(t0, "tm-unavailable-ping");
 		if (rc)
 			pr_warn(rc, "pthread_setname_np");
 		rc = pthread_join(t0, &ret_value);
@@ -359,7 +359,7 @@ int main(int argc, char **argv)
 		pr_err(rc, "pthread_create()");
 
 	/* Name it for systemtap convenience */
-	rc = pthread_setname_np(t1, "pong");
+	rc = pthread_setname_np(t1, "tm-unavailable-pong");
 	if (rc)
 		pr_warn(rc, "pthread_create()");
 
