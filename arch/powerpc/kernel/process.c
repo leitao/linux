@@ -1027,27 +1027,13 @@ static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
 	/*
-	 * So, with the rework none of this code should not be needed.
-	 * I've left in the reclaim for now. This *should* save us
-	 * from any mistake in the new code. Also the
-	 * enabling/disabling logic of MSR_TM really should be
+	 * The enabling/disabling logic of MSR_TM really should be
 	 * refactored into a common way with MSR_{FP,VEC,VSX}
 	 */
-	if (cpu_has_feature(CPU_FTR_TM)) {
-		if (tm_enabled(prev) || tm_enabled(new))
-			tm_enable();
-
-		if (tm_enabled(prev)) {
-			prev->thread.load_tm++;
-			tm_reclaim_task(prev);
-			/*
-			 * The disabling logic may be confused don't
-			 * disable for now
-			 *
-			 * if (!MSR_TM_ACTIVE(prev->thread.regs->msr) && prev->thread.load_tm == 0)
-			 *	prev->thread.regs->msr &= ~MSR_TM;
-			 */
-		}
+	if (cpu_has_feature(CPU_FTR_TM) && tm_enabled(prev)) {
+		prev->thread.load_tm++;
+		if (!MSR_TM_ACTIVE(prev->thread.regs->msr) && prev->thread.load_tm == 0)
+			prev->thread.regs->msr &= ~MSR_TM;
 	}
 }
 
