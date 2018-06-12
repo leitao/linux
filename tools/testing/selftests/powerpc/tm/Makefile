@@ -2,7 +2,7 @@
 SIGNAL_CONTEXT_CHK_TESTS := tm-signal-context-chk-gpr tm-signal-context-chk-fpu \
 	tm-signal-context-chk-vmx tm-signal-context-chk-vsx
 
-TEST_GEN_PROGS := tm-resched-dscr tm-syscall tm-signal-msr-resv tm-signal-stack \
+TEST_GEN_PROGS := tm-resched-dscr tm-signal-msr-resv tm-signal-stack \
 	tm-vmxcopy tm-fork tm-tar tm-tmspr tm-vmx-unavail tm-unavailable tm-trap \
 	tm-signal-drop-transaction \
 	$(SIGNAL_CONTEXT_CHK_TESTS)
@@ -13,8 +13,6 @@ $(TEST_GEN_PROGS): ../harness.c ../utils.c
 
 CFLAGS += -mhtm
 
-$(OUTPUT)/tm-syscall: tm-syscall-asm.S
-$(OUTPUT)/tm-syscall: CFLAGS += -I../../../../../usr/include
 $(OUTPUT)/tm-tmspr: CFLAGS += -pthread
 $(OUTPUT)/tm-vmx-unavail: CFLAGS += -pthread -m64
 $(OUTPUT)/tm-resched-dscr: ../pmu/lib.c
