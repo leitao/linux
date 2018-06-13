@@ -70,11 +70,7 @@
 #include <linux/kdebug.h>
 
 /* Transactional Memory debug */
-#ifdef TM_DEBUG_SW
 #define TM_DEBUG(x...) printk(KERN_INFO x)
-#else
-#define TM_DEBUG(x...) do { } while(0)
-#endif
 
 extern unsigned long _get_SP(void);
 
@@ -977,6 +973,8 @@ void tm_recheckpoint(struct thread_struct *thread)
 {
 	unsigned long flags;
 
+	printf("tm_recheckpoint\n"):
+
 	if (!(thread->regs->msr & MSR_TM))
 		return;
 
@@ -1141,6 +1139,8 @@ void restore_tm_state(struct pt_regs *regs)
 	 * again, anything else could lead to an incorrect ckpt_msr being
 	 * saved and therefore incorrect signal contexts.
 	 */
+
+	printf("restore_tm_state\n");
 
 	/*
 	 * So, on signals we're going to have cleared the TM bits from

@@ -1345,6 +1345,8 @@ void program_check_exception(struct pt_regs *regs)
 	/* We can now get here via a FP Unavailable exception if the core
 	 * has no FPU, in that case the reason flags will be 0 */
 
+	printk("Program Check Exception\n");
+
 	if (reason & REASON_FP) {
 		/* IEEE FP exception */
 		parse_fpe(regs);
@@ -1352,6 +1354,8 @@ void program_check_exception(struct pt_regs *regs)
 	}
 	if (reason & REASON_TRAP) {
 		unsigned long bugaddr;
+
+		printk("Trap\n");
 		/* Debugger is first in line to stop recursive faults in
 		 * rcu_lock, notify_die, or atomic_notifier_call_chain */
 		if (debugger_bpt(regs))
@@ -1397,7 +1401,9 @@ void program_check_exception(struct pt_regs *regs)
 		 * (e.g. executing a 'tend' on a CPU without TM!); it's an
 		 * illegal /placement/ of a valid instruction.
 		 */
+		printk("Reason TM\n");
 		if (user_mode(regs)) {
+			printk("PGM in userspce with REASON TM\n");
 			_exception(SIGILL, regs, ILL_ILLOPN, regs->nip);
 			goto bail;
 		} else {
@@ -1435,6 +1441,7 @@ void program_check_exception(struct pt_regs *regs)
 
 	/* Try to emulate it if we should. */
 	if (reason & (REASON_ILLEGAL | REASON_PRIVILEGED)) {
+		printf("Illegal\n");
 		switch (emulate_instruction(regs)) {
 		case 0:
 			regs->nip += 4;
@@ -1604,6 +1611,8 @@ void facility_unavailable_exception(struct pt_regs *regs)
 	u32 instword, rd;
 	u8 status;
 	bool hv;
+
+	printk("Facility unavailable\n");
 
 	hv = (TRAP(regs) == 0xf80);
 	if (hv)
