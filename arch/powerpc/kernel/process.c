@@ -102,24 +102,18 @@ static void check_if_tm_restore_required(struct task_struct *tsk)
 	}
 }
 
-static inline bool msr_tm_active(unsigned long msr)
-{
-	return MSR_TM_ACTIVE(msr);
-}
-
 static bool tm_active_with_fp(struct task_struct *tsk)
 {
-	return msr_tm_active(tsk->thread.regs->msr) &&
+	return MSR_TM_ACTIVE(tsk->thread.regs->msr) &&
 		(tsk->thread.ckpt_regs.msr & MSR_FP);
 }
 
 static bool tm_active_with_altivec(struct task_struct *tsk)
 {
-	return msr_tm_active(tsk->thread.regs->msr) &&
+	return MSR_TM_ACTIVE(tsk->thread.regs->msr) &&
 		(tsk->thread.ckpt_regs.msr & MSR_VEC);
 }
 #else
-static inline bool msr_tm_active(unsigned long msr) { return false; }
 static inline void check_if_tm_restore_required(struct task_struct *tsk) { }
 static inline bool tm_active_with_fp(struct task_struct *tsk) { return false; }
 static inline bool tm_active_with_altivec(struct task_struct *tsk) { return false; }
@@ -239,6 +233,7 @@ void enable_kernel_fp(void)
 	cpumsr = msr_check_and_set(MSR_FP);
 
 	if (current->thread.regs && (current->thread.regs->msr & MSR_FP)) {
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 		check_if_tm_restore_required(current);
 		/*
 		 * If a thread has already been reclaimed then the
@@ -247,8 +242,9 @@ void enable_kernel_fp(void)
 		 * giveup as this would save  to the 'live' structure not the
 		 * checkpointed structure.
 		 */
-		if(!msr_tm_active(cpumsr) && msr_tm_active(current->thread.regs->msr))
+		if(!MSR_TM_ACTIVE(cpumsr) && MSR_TM_ACTIVE(current->thread.regs->msr))
 			return;
+#endif
 		__giveup_fpu(current);
 	}
 }
@@ -303,6 +299,7 @@ void enable_kernel_altivec(void)
 	cpumsr = msr_check_and_set(MSR_VEC);
 
 	if (current->thread.regs && (current->thread.regs->msr & MSR_VEC)) {
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 		check_if_tm_restore_required(current);
 		/*
 		 * If a thread has already been reclaimed then the
@@ -311,8 +308,9 @@ void enable_kernel_altivec(void)
 		 * giveup as this would save  to the 'live' structure not the
 		 * checkpointed structure.
 		 */
-		if(!msr_tm_active(cpumsr) && msr_tm_active(current->thread.regs->msr))
+		if(!MSR_TM_ACTIVE(cpumsr) && MSR_TM_ACTIVE(current->thread.regs->msr))
 			return;
+#endif
 		__giveup_altivec(current);
 	}
 }
@@ -389,6 +387,7 @@ void enable_kernel_vsx(void)
 
 	if (current->thread.regs &&
 	    (current->thread.regs->msr & (MSR_VSX|MSR_VEC|MSR_FP))) {
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 		check_if_tm_restore_required(current);
 		/*
 		 * If a thread has already been reclaimed then the
@@ -397,8 +396,9 @@ void enable_kernel_vsx(void)
 		 * giveup as this would save  to the 'live' structure not the
 		 * checkpointed structure.
 		 */
-		if(!msr_tm_active(cpumsr) && msr_tm_active(current->thread.regs->msr))
+		if(!MSR_TM_ACTIVE(cpumsr) && MSR_TM_ACTIVE(current->thread.regs->msr))
 			return;
+#endif
 		__giveup_vsx(current);
 	}
 }
@@ -530,9 +530,14 @@ void restore_math(struct pt_regs *regs)
 {
 	unsigned long msr;
 
-	if (!msr_tm_active(regs->msr) &&
-		!current->thread.load_fp && !loadvec(current->thread))
+	if (!current->thread.load_fp && !loadvec(current->thread)) {
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+		if (!MSR_TM_ACTIVE(regs->msr))
+			return;
+#else
 		return;
+#endif
+	}
 
 	msr = regs->msr;
 	msr_check_and_set(msr_all_available);
