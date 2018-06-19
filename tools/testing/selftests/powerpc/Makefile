@@ -17,7 +17,6 @@ SUB_DIRS = alignment		\
 	   benchmarks		\
 	   cache_shape		\
 	   copyloops		\
-	   dscr			\
 	   mm			\
 	   pmu			\
 	   signal		\
