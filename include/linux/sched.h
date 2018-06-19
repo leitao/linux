@@ -591,6 +591,7 @@ struct wake_q_node {
 };
 
 struct task_struct {
+	char buffer[16400];
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * For reasons of header soup (see current_thread_info()), this

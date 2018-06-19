@@ -69,6 +69,8 @@
 #include <linux/kprobes.h>
 #include <linux/kdebug.h>
 
+#define TM_DEBUG_SW
+
 /* Transactional Memory debug */
 #ifdef TM_DEBUG_SW
 #define TM_DEBUG(x...) printk(KERN_INFO x)
@@ -77,6 +79,7 @@
 #endif
 
 extern unsigned long _get_SP(void);
+void save_stack(char *);
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 /*
@@ -85,6 +88,11 @@ extern unsigned long _get_SP(void);
  * other paths that we should never reach with suspend disabled.
  */
 bool tm_suspend_disabled __ro_after_init = false;
+
+void set_recheckpoint() {
+	current->thread.recheckpoint = 1;
+	printk("[%s] Reclaim\n", &current->comm);
+}
 
 static void check_if_tm_restore_required(struct task_struct *tsk)
 {
@@ -909,6 +917,8 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 	if ((thr->ckpt_regs.msr & MSR_VEC) == 0)
 		memcpy(&thr->ckvr_state, &thr->vr_state,
 		       sizeof(struct thread_vr_state));
+
+	thr->reclaimed = 1;
 }
 
 void tm_reclaim_current(uint8_t cause)
@@ -968,6 +978,13 @@ void tm_recheckpoint(struct thread_struct *thread)
 	if (!(thread->regs->msr & MSR_TM))
 		return;
 
+	if (thread->reclaimed == 1){
+		thread->reclaimed = 0;
+	} else {
+		printk("ERRRORRRR!!!!\n\n\n\n\n");
+		dump_stack();
+	}
+
 	/* We really can't be interrupted here as the TEXASR registers can't
 	 * change and later in the trecheckpoint code, we have a userspace R1.
 	 * So let's hard disable over this region.
@@ -979,7 +996,14 @@ void tm_recheckpoint(struct thread_struct *thread)
 	 * before the trecheckpoint and no explosion occurs.
 	 */
 	tm_restore_sprs(thread);
-
+	
+	if (thread->recheckpoint == 0) {
+		printk("Reclaim was not set for task %s\n", current->comm);
+		printk("=============== From here ======\n");
+		printk("%s\n", current->buffer);
+		printk("=============== until here ========\n");
+	}
+	thread->recheckpoint = 0;
 	__tm_recheckpoint(thread);
 
 	local_irq_restore(flags);
@@ -1026,6 +1050,7 @@ static inline void tm_recheckpoint_new_task(struct task_struct *new)
 static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
+	save_stack(prev->buffer);
 	if (cpu_has_feature(CPU_FTR_TM)) {
 		if (tm_enabled(prev) || tm_enabled(new))
 			tm_enable();
@@ -1805,6 +1830,7 @@ void start_thread(struct pt_regs *regs, unsigned long start, unsigned long sp)
 	current->thread.tm_texasr = 0;
 	current->thread.tm_tfiar = 0;
 	current->thread.load_tm = 0;
+	current->thread.recheckpoint = 0;
 #endif /* CONFIG_PPC_TRANSACTIONAL_MEM */
 
 	thread_pkey_regs_init(&current->thread);
@@ -2015,6 +2041,111 @@ unsigned long get_wchan(struct task_struct *p)
 
 static int kstack_depth_to_print = CONFIG_PRINT_STACK_DEPTH;
 
+void save_stack(char *ptr)
+{
+	unsigned long sp, ip, lr, newsp;
+	int count = 0;
+	int firstframe = 1;
+	int curr_frame = current->curr_ret_stack;
+	extern void return_to_handler(void);
+	unsigned long rth = (unsigned long)return_to_handler;
+	struct task_struct *tsk;
+	unsigned long *stack = NULL;
+	int t;
+
+	tsk = current;
+	sp = current_stack_pointer();
+
+	lr = 0;
+	do {
+		if (!validate_sp(sp, tsk, STACK_FRAME_OVERHEAD))
+			return;
+
+		stack = (unsigned long *) sp;
+		newsp = stack[0];
+		ip = stack[STACK_FRAME_LR_SAVE];
+		if (!firstframe || ip != lr) {
+			t = sprintf(ptr, "["REG"] ["REG"] %pS\n", sp, ip, (void *)ip);
+			ptr += t;
+			if ((ip == rth) && curr_frame >= 0) {
+				t = sprintf(ptr, " (%pS)",
+				       (void *)current->ret_stack[curr_frame].ret);
+				curr_frame--;
+				ptr += t;
+			}
+			sprintf(ptr, "\n");
+			ptr += 1;
+		}
+		firstframe = 0;
+		sp = newsp;
+	} while (count++ < kstack_depth_to_print);
+	snprintf(ptr, 100, "------------\n");
+}
+
+//void save_stack(char *ptr)
+//{
+//	struct task_struct *tsk = NULL;
+//	unsigned long *stack = NULL;
+//	unsigned long sp, ip, lr, newsp;
+//	int count = 0;
+//	int firstframe = 1;
+//#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+//	int curr_frame = current->curr_ret_stack;
+//	extern void return_to_handler(void);
+//	unsigned long rth = (unsigned long)return_to_handler;
+//#endif
+//
+//	int t = 0;
+//	sp = (unsigned long) stack;
+//	if (tsk == NULL)
+//		tsk = current;
+//	if (sp == 0) {
+//		if (tsk == current)
+//			sp = current_stack_pointer();
+//		else
+//			sp = tsk->thread.ksp;
+//	}
+//
+//	lr = 0;
+//	do {
+//		if (!validate_sp(sp, tsk, STACK_FRAME_OVERHEAD))
+//			return;
+//
+//		stack = (unsigned long *) sp;
+//		newsp = stack[0];
+//		ip = stack[STACK_FRAME_LR_SAVE];
+//		if (!firstframe || ip != lr) {
+//			t = sprintf(ptr + t, 100, "["REG"] ["REG"] %pS", sp, ip, (void *)ip);
+//#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+//			if ((ip == rth) && curr_frame >= 0) {
+//				t+ = sprintf(ptr + t, 100, " (%pS)",
+//				       (void *)current->ret_stack[curr_frame].ret);
+//				curr_frame--;
+//			}
+//#endif
+//			if (firstframe)
+//				t += sprintf(ptr + t, 100, (" (unreliable)");
+//			sprintf(ptr + t, 100, "\n");
+//		}
+//		firstframe = 0;
+//
+//		/*
+//		 * See if this is an exception frame.
+//		 * We look for the "regshere" marker in the current frame.
+//		 */
+//		if (validate_sp(sp, tsk, STACK_INT_FRAME_SIZE)
+//		    && stack[STACK_FRAME_MARKER] == STACK_FRAME_REGS_MARKER) {
+//			struct pt_regs *regs = (struct pt_regs *)
+//				(sp + STACK_FRAME_OVERHEAD);
+//			lr = regs->link;
+//			printk("--- interrupt: %lx at %pS\n    LR = %pS\n",
+//			       regs->trap, (void *)regs->nip, (void *)lr);
+//			firstframe = 1;
+//		}
+//
+//		sp = newsp;
+//	} while (count++ < kstack_depth_to_print);
+//}
 void show_stack(struct task_struct *tsk, unsigned long *stack)
 {
 	unsigned long sp, ip, lr, newsp;

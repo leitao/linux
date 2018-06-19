@@ -36,6 +36,8 @@
  */
 #include <asm/head-64.h>
 
+#define TM_CAUSE_MISC		0xd6  /* future use */
+
 /* PACA save area offsets (exgen, exmc, etc) */
 #define EX_R9		0
 #define EX_R10		8
@@ -700,10 +702,31 @@ BEGIN_FTR_SECTION				\
 	beql	ppc64_runlatch_on_trampoline;	\
 END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+#define TM_KERNEL_ENTRY			\
+	ld      r3,_MSR(r1);                                            \
+	/* Probably don't need to check if coming from user/kernel */   \
+	/* If TM is suspended or active then we must have come from*/   \
+	/* userspace */                                                 \
+	andi.   r0,r3,MSR_PR;                                           \
+	beq     1f;                                                     \
+	rldicl. r3,r3,(64-MSR_TS_LG),(64-2); /* SUSPENDED or ACTIVE*/   \
+	beql+   1f;                     /* Not SUSPENDED or ACTIVE */   \
+	bl      save_nvgprs;                                            \
+        RECONCILE_IRQ_STATE(r10,r11);                                   \
+        li      r3,TM_CAUSE_MISC;                                       \
+        bl      set_recheckpoint;     /* uint8 cause             */   \
+1:	
+
+#else
+#define TM_KERNEL_ENTRY
+#endif
+
 #define EXCEPTION_COMMON(area, trap, label, hdlr, ret, additions) \
 	EXCEPTION_PROLOG_COMMON(trap, area);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	TM_KERNEL_ENTRY;					\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr;						\
 	b	ret
@@ -718,6 +741,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	EXCEPTION_PROLOG_COMMON_3(trap);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	TM_KERNEL_ENTRY						\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr
 
