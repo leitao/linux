@@ -813,6 +813,7 @@ EXC_COMMON_BEGIN(alignment_common)
 	std	r4,_DSISR(r1)
 	bl	save_nvgprs
 	RECONCILE_IRQ_STATE(r10, r11)
+	TM_KERNEL_ENTRY
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	bl	alignment_exception
 	b	ret_from_except
@@ -1736,7 +1737,9 @@ do_hash_page:
 
 /* Here we have a page fault that hash_page can't handle. */
 handle_page_fault:
-11:	andis.  r0,r4,DSISR_DABRMATCH@h
+11:	TM_KERNEL_ENTRY
+	ld      r4,_DSISR(r1)
+	andis.  r0,r4,DSISR_DABRMATCH@h
 	bne-    handle_dabr_fault
 	ld	r4,_DAR(r1)
 	ld	r5,_DSISR(r1)
@@ -1766,7 +1769,9 @@ handle_dabr_fault:
  * the PTE insertion
  */
 13:	bl	save_nvgprs
-	mr	r5,r3
+	mr	r31,r3
+	TM_KERNEL_ENTRY
+	mr	r5,r31
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	ld	r4,_DAR(r1)
 	bl	low_hash_fault
