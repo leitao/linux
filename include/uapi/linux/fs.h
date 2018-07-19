@@ -348,12 +348,24 @@ typedef int __bitwise __kernel_rwf_t;
  * Flags for fsopen() and co.
  */
 #define FSOPEN_CLOEXEC		0x00000001
-
 #define FSMOUNT_CLOEXEC		0x00000001
 
 #define FSPICK_CLOEXEC		0x00000001
 #define FSPICK_SYMLINK_NOFOLLOW	0x00000002
 #define FSPICK_NO_AUTOMOUNT	0x00000004
 #define FSPICK_EMPTY_PATH	0x00000008
+/*
+ * The type of fsconfig() call made.
+ */
+enum fsconfig_command {
+	fsconfig_set_flag,		/* Set parameter, supplying no value */
+	fsconfig_set_string,		/* Set parameter, supplying a string value */
+	fsconfig_set_binary,		/* Set parameter, supplying a binary blob value */
+	fsconfig_set_path,		/* Set parameter, supplying an object by path */
+	fsconfig_set_path_empty,	/* Set parameter, supplying an object by (empty) path */
+	fsconfig_set_fd,		/* Set parameter, supplying an object by fd */
+	fsconfig_cmd_create,		/* Invoke superblock creation */
+	fsconfig_cmd_reconfigure,	/* Invoke superblock reconfiguration */
+};
 
 #endif /* _UAPI_LINUX_FS_H */
