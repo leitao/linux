@@ -400,5 +400,11 @@
 #define __NR_pkey_mprotect	386
 #define __NR_rseq		387
 #define __NR_io_pgetevents	388
+#define __NR_open_tree		389
+#define __NR_move_mount		390
+#define __NR_fsopen		391
+#define __NR_fsmount		392
+#define __NR_fspick		393
+#define __NR_fsinfo		394
 
 #endif /* _UAPI_ASM_POWERPC_UNISTD_H_ */
