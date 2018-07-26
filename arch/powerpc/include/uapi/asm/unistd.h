@@ -406,5 +406,6 @@
 #define __NR_fsmount		392
 #define __NR_fspick		393
 #define __NR_fsinfo		394
+#define __NR_fsconfig		395
 
 #endif /* _UAPI_ASM_POWERPC_UNISTD_H_ */
