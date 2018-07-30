@@ -907,17 +907,11 @@ static const struct bpf_prog_ops * const bpf_prog_types[] = {
 
 static int find_prog_type(enum bpf_prog_type type, struct bpf_prog *prog)
 {
-	const struct bpf_prog_ops *ops;
-
-	if (type >= ARRAY_SIZE(bpf_prog_types))
-		return -EINVAL;
-	type = array_index_nospec(type, ARRAY_SIZE(bpf_prog_types));
-	ops = bpf_prog_types[type];
-	if (!ops)
+	if (type >= ARRAY_SIZE(bpf_prog_types) || !bpf_prog_types[type])
 		return -EINVAL;
 
 	if (!bpf_prog_is_dev_bound(prog->aux))
-		prog->aux->ops = ops;
+		prog->aux->ops = bpf_prog_types[type];
 	else
 		prog->aux->ops = &bpf_offload_prog_ops;
 	prog->type = type;
