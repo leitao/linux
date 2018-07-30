@@ -21,7 +21,6 @@
 #include <linux/export.h>
 #include <linux/context_tracking.h>
 #include <linux/user-return-notifier.h>
-#include <linux/nospec.h>
 #include <linux/uprobes.h>
 #include <linux/livepatch.h>
 #include <linux/syscalls.h>
@@ -286,8 +285,7 @@ __visible void do_syscall_64(struct pt_regs *regs)
 	 * regs->orig_ax, which changes the behavior of some syscalls.
 	 */
 	if (likely((nr & __SYSCALL_MASK) < NR_syscalls)) {
-		nr = array_index_nospec(nr & __SYSCALL_MASK, NR_syscalls);
-		regs->ax = sys_call_table[nr](regs);
+		regs->ax = sys_call_table[nr & __SYSCALL_MASK](regs);
 	}
 
 	syscall_return_slowpath(regs);
@@ -321,7 +319,6 @@ static __always_inline void do_syscall_32_irqs_on(struct pt_regs *regs)
 	}
 
 	if (likely(nr < IA32_NR_syscalls)) {
-		nr = array_index_nospec(nr, IA32_NR_syscalls);
 #ifdef CONFIG_IA32_EMULATION
 		regs->ax = ia32_sys_call_table[nr](regs);
 #else
