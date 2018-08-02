@@ -126,6 +126,11 @@ BEGIN_FW_FTR_SECTION
 	addi	r9,r1,STACK_FRAME_OVERHEAD
 33:
 END_FW_FTR_SECTION_IFSET(FW_FEATURE_SPLPAR)
+	TM_KERNEL_ENTRY
+        REST_GPR(0,r1)
+        REST_4GPRS(3,r1)
+        REST_2GPRS(7,r1)
+        addi    r9,r1,STACK_FRAME_OVERHEAD
 #endif /* CONFIG_VIRT_CPU_ACCOUNTING_NATIVE && CONFIG_PPC_SPLPAR */
 
 	/*
@@ -981,6 +986,19 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	bl	__check_irq_replay
 	cmpwi	cr0,r3,0
 	beq	.Lrestore_no_replay
+
+        /*
+         * We decide VERY late if we need to replay interrupts, theres
+         * not much which can be done about that so this will have to
+         * do
+         */
+        TM_KERNEL_ENTRY
+	/*
+	 * This will restore r3 that TM_KERNEL_ENTRY clobbered.
+	 * Clearly not ideal! I wonder if we could change the trap
+	 * value beforehand...
+	 */
+	bl	__check_irq_replay
  
 	/*
 	 * We need to re-emit an interrupt. We do so by re-using our
