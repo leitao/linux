@@ -861,6 +861,25 @@ static inline bool hw_brk_match(struct arch_hw_breakpoint *a,
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 
+void tm_save_sprs_current(unsigned long msr)
+{
+	struct thread_struct *thread;
+
+	/* TODO */
+	return ;
+	if (msr & MSR_TM) {
+		tm_enable();
+		thread = &current->thread;
+		tm_save_sprs(thread);
+		printk("Saved spr for %lx\n", current->pid);
+	}
+}
+
+void set_recheckpoint() {
+       current->thread.recheckpoint = 1;
+       printk("[%s] Reclaim\n", &current->comm);
+}
+
 static inline bool tm_enabled(struct task_struct *tsk)
 {
 	return tsk && tsk->thread.regs && (tsk->thread.regs->msr & MSR_TM);

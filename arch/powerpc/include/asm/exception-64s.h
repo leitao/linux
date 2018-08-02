@@ -35,6 +35,7 @@
  * implementations as possible.
  */
 #include <asm/head-64.h>
+#include <asm/tm.h>
 
 /* PACA save area offsets (exgen, exmc, etc) */
 #define EX_R9		0
@@ -699,6 +700,22 @@ BEGIN_FTR_SECTION				\
 	andi.	r0,r4,_TLF_RUNLATCH;		\
 	beql	ppc64_runlatch_on_trampoline;	\
 END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
+
+ #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+#define TM_KERNEL_ENTRY                 \
+        rldicl. r3,r3,(64-MSR_TS_LG),(64-2); /* SUSPENDED or ACTIVE*/   \
+        beql+   1f;                     /* Not SUSPENDED or ACTIVE */   \
+        bl      save_nvgprs;                                            \
+        RECONCILE_IRQ_STATE(r10,r11);                                   \
+        li      r3,TM_CAUSE_MISC;                                       \
+        bl      tm_reclaim_current;                                     \
+        bl      set_recheckpoint;     /* uint8 cause             */     \
+        b       2f;                                                     \
+1:      bl      tm_save_sprs_current;                                   \
+2:      
+#else
+#define TM_KERNEL_ENTRY
+#endif
 
 #define EXCEPTION_COMMON(area, trap, label, hdlr, ret, additions) \
 	EXCEPTION_PROLOG_COMMON(trap, area);			\
