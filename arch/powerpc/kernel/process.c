@@ -1058,6 +1058,7 @@ static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
 	/* we do not need to do any TM on context switch anymore */
+	BUG_ON(MSR_TM_ACTIVE(mfmsr()));
 }
 
 /*
@@ -1277,7 +1278,17 @@ struct task_struct *__switch_to(struct task_struct *prev,
 	}
 
 	if (current_thread_info()->task->thread.regs) {
-		restore_math(current_thread_info()->task->thread.regs);
+		/*
+		 * Calling this now has reloaded the live state, which
+		 * gets overwritten with the checkpointed state right
+		 * before the trecheckpoint. BUT the MSR still has
+		 * that the live state is on the CPU, which it isn't.
+		 *
+		 * restore_math(current_thread_info()->task->thread.regs);
+		 * Therefore:
+		 */
+		if (!MSR_TM_ACTIVE(current_thread_info()->task->thread.regs->msr))
+			restore_math(current_thread_info()->task->thread.regs);
 
 		/*
 		 * The copy-paste buffer can only store into foreign real
