@@ -1094,6 +1094,12 @@ void restore_tm_state(struct pt_regs *regs)
 	msr_diff = current->thread.ckpt_regs.msr & ~regs->msr;
 	msr_diff &= MSR_FP | MSR_VEC | MSR_VSX;
 
+	/* Enabling it to recheckpoint or restore sprs */
+	tm_enable();
+
+	/* Restoring all threads that have TIF_RESTORE_TM enabled */
+	tm_recheckpoint(&current->thread);
+
 	/* Ensure that restore_math() will restore */
 	if (msr_diff & MSR_FP)
 		current->thread.load_fp = 1;
