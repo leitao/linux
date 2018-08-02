@@ -69,6 +69,11 @@
 #include <linux/kprobes.h>
 #include <linux/kdebug.h>
 
+#define CONFIG_PPC_HTM_DEBUG
+
+#ifdef CONFIG_PPC_HTM_DEBUG
+#define TM_DEBUG_SW
+#endif
 /* Transactional Memory debug */
 #ifdef TM_DEBUG_SW
 #define TM_DEBUG(x...) printk(KERN_INFO x)
@@ -874,19 +879,23 @@ void tm_save_sprs_current(unsigned long msr)
 {
 	struct thread_struct *thread;
 
-	/* TODO */
-	return ;
 	if (msr & MSR_TM) {
 		tm_enable();
 		thread = &current->thread;
 		tm_save_sprs(thread);
+#ifdef CONFIG_PPC_HTM_DEBUG
 		printk("Saved spr for %lx\n", current->pid);
+#endif
 	}
 }
 
 void set_recheckpoint() {
-       current->thread.recheckpoint = 1;
-       printk("[%s] Reclaim\n", &current->comm);
+#ifdef CONFIG_PPC_HTM_DEBUG
+	if (current->thread.recheckpoint){
+		printk("[%s] reclaiming again without recheckpoint\n", &current->comm);
+	}
+#endif
+       current->thread.recheckpoint += 1;
 }
 
 static inline bool tm_enabled(struct task_struct *tsk)
@@ -959,6 +968,11 @@ static inline void tm_reclaim_task(struct task_struct *tsk)
 	 */
 	struct thread_struct *thr = &tsk->thread;
 
+#ifdef CONFIG_PPC_HTM_DEBUG
+	printk("Should not reclaim here\n");
+#endif
+	dump_stack();
+
 	if (!thr->regs)
 		return;
 
@@ -1010,6 +1024,16 @@ void tm_recheckpoint(struct thread_struct *thread)
 	 * before the trecheckpoint and no explosion occurs.
 	 */
 	tm_restore_sprs(thread);
+
+#ifdef CONFIG_PPC_HTM_DEBUG
+	if (!thread->recheckpoint){
+		printk("Recheckpoint without treclaim?\n");
+	}
+	thread->recheckpoint--;
+	if (thread->recheckpoint){
+		printk("Recheckpoint missing\n");
+	}
+#endif
 
 	__tm_recheckpoint(thread);
 
@@ -1852,6 +1876,7 @@ void start_thread(struct pt_regs *regs, unsigned long start, unsigned long sp)
 	current->thread.tm_texasr = 0;
 	current->thread.tm_tfiar = 0;
 	current->thread.load_tm = 0;
+	current->thread.recheckpoint = 0;
 #endif /* CONFIG_PPC_TRANSACTIONAL_MEM */
 
 	thread_pkey_regs_init(&current->thread);
