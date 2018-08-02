@@ -987,6 +987,9 @@ void tm_recheckpoint(struct thread_struct *thread)
 	if (!(thread->regs->msr & MSR_TM))
 		return;
 
+	/* We shouldn't recheckpoint if the transaction is still active */
+	BUG_ON(MSR_TM_ACTIVE(mfmsr()));
+
 	/* We really can't be interrupted here as the TEXASR registers can't
 	 * change and later in the trecheckpoint code, we have a userspace R1.
 	 * So let's hard disable over this region.
