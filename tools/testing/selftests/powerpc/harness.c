@@ -22,12 +22,12 @@
 #define KILL_TIMEOUT	5
 
 static uint64_t timeout = 120;
+pid_t pid;
 
 int run_test(int (test_function)(void), char *name)
 {
 	bool terminated;
 	int rc, status;
-	pid_t pid;
 
 	/* Make sure output is flushed before forking */
 	fflush(stdout);
@@ -85,13 +85,16 @@ wait:
 	return status;
 }
 
-static void alarm_handler(int signum)
+static void sig_handler(int signum)
 {
-	/* Jut wake us up from waitpid */
+	if (signum == SIGINT)
+		kill(-pid, SIGTERM);
+
+	/* if SIGALRM, just wake us up from waitpid */
 }
 
-static struct sigaction alarm_action = {
-	.sa_handler = alarm_handler,
+static struct sigaction sig_action = {
+	.sa_handler = sig_handler,
 };
 
 void test_harness_set_timeout(uint64_t time)
@@ -106,8 +109,14 @@ int test_harness(int (test_function)(void), char *name)
 	test_start(name);
 	test_set_git_version(GIT_VERSION);
 
-	if (sigaction(SIGALRM, &alarm_action, NULL)) {
-		perror("sigaction");
+	if (sigaction(SIGINT, &sig_action, NULL)) {
+		perror("sigaction (sigint)");
+		test_error(name);
+		return 1;
+	}
+
+	if (sigaction(SIGALRM, &sig_action, NULL)) {
+		perror("sigaction (sigalrm)");
 		test_error(name);
 		return 1;
 	}
