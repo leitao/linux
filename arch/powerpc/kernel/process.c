@@ -1029,6 +1029,9 @@ void tm_recheckpoint(struct thread_struct *thread)
 
 	__tm_recheckpoint(thread);
 
+	/* restore DSCR. Might need to remove from __tm_recheckpoint */
+	mtspr(SPRN_DSCR, thread->tm_dscr);
+
 	local_irq_restore(flags);
 }
 
