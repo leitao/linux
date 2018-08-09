@@ -1574,6 +1574,7 @@ static void tm_unavailable(struct pt_regs *regs)
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	if (user_mode(regs)) {
 		current->thread.load_tm++;
+		current->thread.tm_state = TM_ENABLED;
 		regs->msr |= MSR_TM;
 		tm_enable();
 		tm_restore_sprs(&current->thread);

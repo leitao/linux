@@ -18,4 +18,10 @@
 #define TM_CAUSE_ALIGNMENT	0xd2
 #define TM_CAUSE_EMULATE	0xd0
 
+
+/* TM states */
+#define TM_ENABLED		0x1
+#define TM_RECLAIMED		0x2
+#define TM_SPR_SAVED		0x4
+
 #endif

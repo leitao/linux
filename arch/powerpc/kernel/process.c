@@ -884,18 +884,9 @@ void tm_save_sprs_current(unsigned long msr)
 		thread = &current->thread;
 		tm_save_sprs(thread);
 #ifdef CONFIG_PPC_HTM_DEBUG
-		printk("Saved spr for %lx\n", current->pid);
+		thread->tm_state |= TM_SPR_SAVED;
 #endif
 	}
-}
-
-void set_recheckpoint() {
-#ifdef CONFIG_PPC_HTM_DEBUG
-	if (current->thread.recheckpoint){
-		printk("[%s] reclaiming again without recheckpoint\n", &current->comm);
-	}
-#endif
-       current->thread.recheckpoint += 1;
 }
 
 static inline bool tm_enabled(struct task_struct *tsk)
@@ -951,6 +942,10 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 void tm_reclaim_current(uint8_t cause)
 {
 	tm_enable();
+	if (current->thread.tm_state == TM_RECLAIMED){
+		printk("ERROR. Reclaiming twice\n");
+	}
+	current->thread.tm_state = TM_RECLAIMED;
 	tm_reclaim_thread(&current->thread, current_thread_info(), cause);
 }
 
@@ -1026,13 +1021,10 @@ void tm_recheckpoint(struct thread_struct *thread)
 	tm_restore_sprs(thread);
 
 #ifdef CONFIG_PPC_HTM_DEBUG
-	if (!thread->recheckpoint){
-		printk("Recheckpoint without treclaim?\n");
+	if (thread->tm_state & TM_RECLAIMED == 0) {
+		printk("Recheckpoint without reclaiming?\n");
 	}
-	thread->recheckpoint--;
-	if (thread->recheckpoint){
-		printk("Recheckpoint missing\n");
-	}
+	thread->tm_state &= ~TM_RECLAIMED;
 #endif
 
 	__tm_recheckpoint(thread);
@@ -1091,8 +1083,10 @@ static inline void __switch_to_tm(struct task_struct *prev,
 	/* we do not need to do any TM on context switch anymore */
 	BUG_ON(MSR_TM_ACTIVE(mfmsr()));
 
-	if (prev->thread.recheckpoint)
+	if ((prev->thread.tm_state & TM_RECLAIMED) != 0) {
+		printk("Fixing cause for %s\n", prev->comm);
 		tm_fix_failure_cause(prev, TM_CAUSE_RESCHED);
+	}
 }
 
 /*
@@ -1886,7 +1880,7 @@ void start_thread(struct pt_regs *regs, unsigned long start, unsigned long sp)
 	current->thread.tm_texasr = 0;
 	current->thread.tm_tfiar = 0;
 	current->thread.load_tm = 0;
-	current->thread.recheckpoint = 0;
+	current->thread.tm_state = 0;
 #endif /* CONFIG_PPC_TRANSACTIONAL_MEM */
 
 	thread_pkey_regs_init(&current->thread);
