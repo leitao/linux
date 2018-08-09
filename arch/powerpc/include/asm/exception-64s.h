@@ -703,15 +703,19 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 
  #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 #define TM_KERNEL_ENTRY                 \
+	ld	r3, _MSR(r1);						\
+	rldicl. r3, r3, (64-MSR_TM_LG), (64-1);  /* TM enabled? */		\
+	beq+	2f;			    /* If TM disabled, leave*/	\
+	ld	r3, _MSR(r1);						\
         rldicl. r3,r3,(64-MSR_TS_LG),(64-2); /* SUSPENDED or ACTIVE*/   \
         beql+   1f;                     /* Not SUSPENDED or ACTIVE */   \
+	/* TM Active */							\
         bl      save_nvgprs;                                            \
         RECONCILE_IRQ_STATE(r10,r11);                                   \
         li      r3,TM_CAUSE_MISC;                                       \
         bl      tm_reclaim_current;                                     \
-        bl      set_recheckpoint;     /* uint8 cause             */     \
         b       2f;                                                     \
-1:      bl      tm_save_sprs_current;                                   \
+1:      /*bl      tm_save_sprs_current; */                                  \
 2:      
 #else
 #define TM_KERNEL_ENTRY
