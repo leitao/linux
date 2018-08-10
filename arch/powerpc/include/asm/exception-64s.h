@@ -704,7 +704,10 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
  #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 #define TM_KERNEL_ENTRY                 \
 	ld	r3, _MSR(r1);						\
-	rldicl. r3, r3, (64-MSR_TM_LG), (64-1);  /* TM enabled? */		\
+	/* Check if coming from PR, otherwise crash on IRQ replay */    \
+	andi.	r0,r3,MSR_PR;						\
+	beq	1f;							\
+	rldicl. r3, r3, (64-MSR_TM_LG), (64-1);  /* TM enabled? */	\
 	beq+	2f;			    /* If TM disabled, leave*/	\
 	ld	r3, _MSR(r1);						\
         rldicl. r3,r3,(64-MSR_TS_LG),(64-2); /* SUSPENDED or ACTIVE*/   \
