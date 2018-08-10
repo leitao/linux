@@ -1709,6 +1709,10 @@ void fp_unavailable_tm(struct pt_regs *regs)
 {
 	/* Note:  This does not handle any kind of FP laziness. */
 
+	/* The facility unavailable exceptions are *not* calling
+	 * TM_KERNEL_ENTRY, so we need to reclaim here. Ideally we would need to
+	 * recclaim at the IRQ handler and fix the TM_CAUSE here */
+
 	TM_DEBUG("FP Unavailable trap whilst transactional at 0x%lx, MSR=%lx\n",
 		 regs->nip, regs->msr);
 
