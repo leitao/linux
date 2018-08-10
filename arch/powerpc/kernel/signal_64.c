@@ -725,8 +725,8 @@ SYSCALL_DEFINE0(rt_sigreturn)
 	 * The cause is not important as there will never be a
 	 * recheckpoint so it's not user visible.
 	 */
-	if (MSR_TM_SUSPENDED(mfmsr()))
-		tm_reclaim_current(0);
+	BUG_ON(MSR_TM_SUSPENDED(mfmsr()));
+
 
 	/*
 	 * There is a universe where the signal handler did something
