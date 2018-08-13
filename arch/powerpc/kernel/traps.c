@@ -89,6 +89,8 @@ EXPORT_SYMBOL(__debugger_break_match);
 EXPORT_SYMBOL(__debugger_fault_handler);
 #endif
 
+#define TM_DEBUG_SW 1
+
 /* Transactional Memory trap debug */
 #ifdef TM_DEBUG_SW
 #define TM_DEBUG(x...) printk(KERN_INFO x)
@@ -1735,6 +1737,8 @@ void fp_unavailable_tm(struct pt_regs *regs)
 	 * If VMX is in use, the VRs now hold checkpointed values,
 	 * so we don't want to load the VRs from the thread_struct.
 	 */
+
+	tm_fix_failure_cause(current, TM_CAUSE_FAC_UNAV);
 }
 
 void altivec_unavailable_tm(struct pt_regs *regs)
@@ -1749,6 +1753,7 @@ void altivec_unavailable_tm(struct pt_regs *regs)
 	tm_reclaim_current(TM_CAUSE_FAC_UNAV);
 	current->thread.load_vec = 1;
 	current->thread.used_vr = 1;
+	tm_fix_failure_cause(current, TM_CAUSE_FAC_UNAV);
 }
 
 void vsx_unavailable_tm(struct pt_regs *regs)
@@ -1771,6 +1776,7 @@ void vsx_unavailable_tm(struct pt_regs *regs)
 
 	current->thread.load_vec = 1;
 	current->thread.load_fp = 1;
+	tm_fix_failure_cause(current, TM_CAUSE_FAC_UNAV);
 
 }
 #endif /* CONFIG_PPC_TRANSACTIONAL_MEM */
