@@ -80,9 +80,9 @@ int tm_syscall(void)
 	for (count = 0; timercmp(&now, &end, <); count++) {
 		/*
 		 * Test a syscall within a suspended transaction and verify
-		 * that it succeeds.
+		 * that it fails.
 		 */
-		FAIL_IF(getppid_tm(true) == -1); /* Should succeed. */
+		FAIL_IF(getppid_tm(true) != -1); /* Should fail. */
 
 		/*
 		 * Test a syscall within an active transaction and verify that
