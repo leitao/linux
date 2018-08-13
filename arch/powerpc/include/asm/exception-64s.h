@@ -35,6 +35,7 @@
  * implementations as possible.
  */
 #include <asm/head-64.h>
+#include <asm/tm.h>
 
 /* PACA save area offsets (exgen, exmc, etc) */
 #define EX_R9		0
@@ -699,6 +700,30 @@ BEGIN_FTR_SECTION				\
 	andi.	r0,r4,_TLF_RUNLATCH;		\
 	beql	ppc64_runlatch_on_trampoline;	\
 END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
+
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+#define TM_KERNEL_ENTRY                 				\
+        ld      r3, _MSR(r1);                                           \
+        /* Check if coming from PR, otherwise crash on IRQ replay */    \
+        andi.   r0,r3,MSR_PR;                                           \
+        beq     1f;                                                     \
+        rldicl. r3, r3, (64-MSR_TM_LG), (64-1);  /* TM enabled? */      \
+        beq+    1f;                         /* If TM disabled, leave*/  \
+        ld      r3, _MSR(r1);                                           \
+        rldicl. r3,r3,(64-MSR_TS_LG),(64-2); /* SUSPENDED or ACTIVE*/   \
+        beql+   1f;                     /* Not SUSPENDED or ACTIVE */   \
+        /* TM Active */                                                 \
+        bl      save_nvgprs;                                            \
+        RECONCILE_IRQ_STATE(r10,r11);                                   \
+        li      r3,TM_CAUSE_MISC;                                       \
+        bl      tm_reclaim_current;                                     \
+	/* Return value. 1 == reclaim executed */			\
+	li	r3, 1;							\
+	/* Return value. 0 == reclaim executed */			\
+1:	li	r3, 0;
+#else
+#define TM_KERNEL_ENTRY
+#endif
 
 #define EXCEPTION_COMMON(area, trap, label, hdlr, ret, additions) \
 	EXCEPTION_PROLOG_COMMON(trap, area);			\
