@@ -917,6 +917,10 @@ void tm_reclaim_current(uint8_t cause)
 {
 	tm_enable();
 	tm_reclaim_thread(&current->thread, current_thread_info(), cause);
+#ifdef CONFIG_PPC_TRANSACTIONAL_DEBUG
+	WARN_ON(current->thread.tm_state == TM_RECLAIMED);
+	current->thread.tm_state = TM_RECLAIMED;
+#endif
 }
 
 static inline void tm_reclaim_task(struct task_struct *tsk)
@@ -981,6 +985,11 @@ void tm_recheckpoint(struct thread_struct *thread)
 	 * before the trecheckpoint and no explosion occurs.
 	 */
 	tm_restore_sprs(thread);
+
+#ifdef CONFIG_PPC_TRANSACTIONAL_DEBUG
+	WARN_ON(thread->tm_state & TM_RECLAIMED == 0);
+	thread->tm_state &= ~TM_RECLAIMED;
+#endif
 
 	__tm_recheckpoint(thread);
 
