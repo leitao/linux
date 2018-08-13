@@ -296,6 +296,9 @@ struct thread_struct {
 #endif /* CONFIG_SPE */
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	u8	load_tm;
+#ifdef CONFIG_PPC_TRANSACTIONAL_DEBUG
+	u8      tm_state;
+#endif
 	u64		tm_tfhar;	/* Transaction fail handler addr */
 	u64		tm_texasr;	/* Transaction exception & summary */
 	u64		tm_tfiar;	/* Transaction fail instr address reg */
