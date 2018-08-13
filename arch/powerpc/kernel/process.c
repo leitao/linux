@@ -1028,11 +1028,20 @@ static inline void tm_recheckpoint_new_task(struct task_struct *new)
 		 new->pid, mfmsr());
 }
 
+void tm_fix_failure_cause(struct task_struct *task, uint8_t cause){
+	/* Clear the cause first */
+	task->thread.tm_texasr &= ~TEXASR_FC;
+
+	task->thread.tm_texasr |= (unsigned long) cause << 56;
+}
+
 static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
 	/* we do not need to do any TM on context switch anymore */
 	WARN_ON(MSR_TM_ACTIVE(mfmsr()));
+
+	tm_fix_failure_cause(prev, TM_CAUSE_RESCHED);
 }
 
 /*
