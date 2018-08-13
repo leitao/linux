@@ -18,4 +18,7 @@
 #define TM_CAUSE_ALIGNMENT	0xd2
 #define TM_CAUSE_EMULATE	0xd0
 
+/* TM states */
+#define TM_RECLAIMED           0x1
+
 #endif
