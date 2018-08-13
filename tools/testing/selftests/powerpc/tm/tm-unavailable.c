@@ -57,13 +57,14 @@ bool expecting_failure(void)
 
 	/*
 	 * If both FP and VEC are touched it does not mean that touching VSX
-	 * won't raise an exception. The exception will hit
-	 * vsx_unavailable_tm() that will reclaima and recheckpoint, thus, the
-	 * failure is expected.
+	 * won't raise an exception. However since FP and VEC state are already
+	 * correctly loaded, the transaction is not aborted (i.e.
+	 * treclaimed/trecheckpointed) and MSR.VSX is just set as 1, so a TM
+	 * failure is not expected also in this case.
 	 */
 	if ((flags.touch_fp && flags.touch_vec) &&
 	     flags.exception == VSX_UNA_EXCEPTION)
-		return true;
+		return false;
 
 	return true;
 }
