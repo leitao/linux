@@ -62,7 +62,8 @@ exception_marker:
 system_call_common:
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
-	extrdi.	r10, r12, 1, (63-MSR_TS_T_LG) /* transaction active? */
+	/* r12 contains the SRR1 (MSR in userspace) */
+	extrdi.	r10, r12, 2, (63-MSR_TS_T_LG) /* transaction active? */
 	bne	.Ltabort_syscall
 END_FTR_SECTION_IFSET(CPU_FTR_TM)
 #endif
@@ -126,11 +127,12 @@ BEGIN_FW_FTR_SECTION
 	addi	r9,r1,STACK_FRAME_OVERHEAD
 33:
 END_FW_FTR_SECTION_IFSET(FW_FEATURE_SPLPAR)
-	TM_KERNEL_ENTRY
-        REST_GPR(0,r1)
-        REST_4GPRS(3,r1)
-        REST_2GPRS(7,r1)
-        addi    r9,r1,STACK_FRAME_OVERHEAD
+	/* Never reaches this point with MSR[TS] enabled, but with MSR[TM] enabled, so, save SPRs */
+//	TM_KERNEL_ENTRY
+ //       REST_GPR(0,r1)
+ //       REST_4GPRS(3,r1)
+  //      REST_2GPRS(7,r1)
+//        addi    r9,r1,STACK_FRAME_OVERHEAD
 #endif /* CONFIG_VIRT_CPU_ACCOUNTING_NATIVE && CONFIG_PPC_SPLPAR */
 
 	/*
