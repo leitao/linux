@@ -1724,13 +1724,6 @@ void fp_unavailable_tm(struct pt_regs *regs)
 	/* Enable FP for the task: */
 	current->thread.load_fp = 1;
 
-	/* This loads and recheckpoints the FP registers from
-	 * thread.fpr[].  They will remain in registers after the
-	 * checkpoint so we don't need to reload them after.
-	 * If VMX is in use, the VRs now hold checkpointed values,
-	 * so we don't want to load the VRs from the thread_struct.
-	 */
-	tm_recheckpoint(&current->thread);
 }
 
 void altivec_unavailable_tm(struct pt_regs *regs)
@@ -1744,8 +1737,8 @@ void altivec_unavailable_tm(struct pt_regs *regs)
 		 regs->nip, regs->msr);
 	tm_reclaim_current(TM_CAUSE_FAC_UNAV);
 	current->thread.load_vec = 1;
-	tm_recheckpoint(&current->thread);
 	current->thread.used_vr = 1;
+
 }
 
 void vsx_unavailable_tm(struct pt_regs *regs)
@@ -1769,7 +1762,6 @@ void vsx_unavailable_tm(struct pt_regs *regs)
 	current->thread.load_vec = 1;
 	current->thread.load_fp = 1;
 
-	tm_recheckpoint(&current->thread);
 }
 #endif /* CONFIG_PPC_TRANSACTIONAL_MEM */
 
