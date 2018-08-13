@@ -62,7 +62,8 @@ exception_marker:
 system_call_common:
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
-	extrdi.	r10, r12, 1, (63-MSR_TS_T_LG) /* transaction active? */
+	/* r12 contains the SRR1 (MSR in userspace) */
+	extrdi.	r10, r12, 2, (63-MSR_TS_T_LG) /* transaction active? */
 	bne	.Ltabort_syscall
 END_FTR_SECTION_IFSET(CPU_FTR_TM)
 #endif
