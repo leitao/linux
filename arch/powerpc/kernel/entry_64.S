@@ -982,6 +982,15 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	cmpwi	cr0,r3,0
 	beq	.Lrestore_no_replay
  
+	TM_KERNEL_ENTRY
+
+	/*
+	* TODO: This will restore r3 that TM_KERNEL_ENTRY clobbered.
+	* Clearly not ideal! I wonder if we could change the trap
+	* value beforehand...
+	*/
+	bl      __check_irq_replay
+
 	/*
 	 * We need to re-emit an interrupt. We do so by re-using our
 	 * existing exception frame. We first change the trap value,
