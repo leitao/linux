@@ -501,11 +501,13 @@ void giveup_all(struct task_struct *tsk)
 
 	usermsr = tsk->thread.regs->msr;
 
+	/* Check if TIF_RESTORE_TM is required before returning */
+	check_if_tm_restore_required(tsk);
+
 	if ((usermsr & msr_all_available) == 0)
 		return;
 
 	msr_check_and_set(msr_all_available);
-	check_if_tm_restore_required(tsk);
 
 	WARN_ON((usermsr & MSR_VSX) && !((usermsr & MSR_FP) && (usermsr & MSR_VEC)));
 
@@ -1065,9 +1067,19 @@ void restore_tm_state(struct pt_regs *regs)
 	 * again, anything else could lead to an incorrect ckpt_msr being
 	 * saved and therefore incorrect signal contexts.
 	 */
-	clear_thread_flag(TIF_RESTORE_TM);
 	if (!MSR_TM_ACTIVE(regs->msr))
 		return;
+
+	/* Does not clear the TIF_RESTORE_TM if we are not returning in a
+	 * active transaction. We are basically defering the recheckpoint for
+	 * signal handler here, i.e, not clearing the flag when calling the
+	 * signal return, but later, when getting back to the application,
+	 * then, with MSR active */
+	clear_thread_flag(TIF_RESTORE_TM);
+
+	tm_enable();
+	/* The only place we recheckpoint */
+	tm_recheckpoint(&current->thread);
 
 	msr_diff = current->thread.ckpt_regs.msr & ~regs->msr;
 	msr_diff &= MSR_FP | MSR_VEC | MSR_VSX;

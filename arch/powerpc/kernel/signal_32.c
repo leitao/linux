@@ -857,21 +857,8 @@ static long restore_tm_user_regs(struct pt_regs *regs,
 	tm_enable();
 	/* Make sure the transaction is marked as failed */
 	current->thread.tm_texasr |= TEXASR_FS;
-	/* This loads the checkpointed FP/VEC state, if used */
-	tm_recheckpoint(&current->thread);
 
-	/* This loads the speculative FP/VEC state, if used */
-	msr_check_and_set(msr & (MSR_FP | MSR_VEC));
-	if (msr & MSR_FP) {
-		load_fp_state(&current->thread.fp_state);
-		regs->msr |= (MSR_FP | current->thread.fpexc_mode);
-	}
-#ifdef CONFIG_ALTIVEC
-	if (msr & MSR_VEC) {
-		load_vr_state(&current->thread.vr_state);
-		regs->msr |= MSR_VEC;
-	}
-#endif
+	set_thread_flag(TIF_RESTORE_TM);
 
 	return 0;
 }
