@@ -572,18 +572,8 @@ static long restore_tm_sigcontexts(struct task_struct *tsk,
 	tm_enable();
 	/* Make sure the transaction is marked as failed */
 	tsk->thread.tm_texasr |= TEXASR_FS;
-	/* This loads the checkpointed FP/VEC state, if used */
-	tm_recheckpoint(&tsk->thread);
 
-	msr_check_and_set(msr & (MSR_FP | MSR_VEC));
-	if (msr & MSR_FP) {
-		load_fp_state(&tsk->thread.fp_state);
-		regs->msr |= (MSR_FP | tsk->thread.fpexc_mode);
-	}
-	if (msr & MSR_VEC) {
-		load_vr_state(&tsk->thread.vr_state);
-		regs->msr |= MSR_VEC;
-	}
+	set_thread_flag(TIF_RESTORE_TM);
 
 	return err;
 }
@@ -743,6 +733,7 @@ SYSCALL_DEFINE0(rt_sigreturn)
 	else
 	/* Fall through, for non-TM restore */
 #endif
+	clear_thread_flag(TIF_RESTORE_TM);
 	if (restore_sigcontext(current, NULL, 1, &uc->uc_mcontext))
 		goto badframe;
 
