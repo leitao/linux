@@ -984,6 +984,9 @@ void tm_recheckpoint(struct thread_struct *thread)
 
 	__tm_recheckpoint(thread);
 
+	/* Restore the DSCR from the thread, since we going userspace */
+	mtspr(SPRN_DSCR, thread->tm_dscr);
+
 	local_irq_restore(flags);
 }
 
