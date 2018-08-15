@@ -30,6 +30,9 @@
 #include <asm/switch_to.h>
 #endif
 
+#ifdef __BEAM__
+/* BEAM cannot handle vector types */
+#else
 typedef vector unsigned char unative_t;
 #define NSIZE sizeof(unative_t)
 
@@ -102,4 +105,5 @@ const struct raid6_calls raid6_vpermxor$# = {
 	"vpermxor$#",
 	0
 };
+#endif
 #endif

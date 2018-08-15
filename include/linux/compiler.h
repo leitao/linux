@@ -245,6 +245,9 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
 #include <asm/barrier.h>
 #include <linux/kasan-checks.h>
 
+#ifdef BEAM
+#define __READ_ONCE(x, check) (x)
+#else
 #define __READ_ONCE(x, check)						\
 ({									\
 	union { typeof(x) __val; char __c[1]; } __u;			\
@@ -255,6 +258,7 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
 	smp_read_barrier_depends(); /* Enforce dependency ordering from x */ \
 	__u.__val;							\
 })
+#endif
 #define READ_ONCE(x) __READ_ONCE(x, 1)
 
 /*
@@ -270,6 +274,15 @@ unsigned long read_word_at_a_time(const void *addr)
 	return *(unsigned long *)addr;
 }
 
+#ifdef __BEAM__
+#define WRITE_ONCE(x, val) \
+do {							\
+	union { typeof(x) __val; char __c[1]; } __u =	\
+		{ .__val = (__force typeof(x)) (val) }; \
+	__write_once_size(&(x), __u.__c, sizeof(x));	\
+	__u.__val;					\
+} while (0)
+#else
 #define WRITE_ONCE(x, val) \
 ({							\
 	union { typeof(x) __val; char __c[1]; } __u =	\
@@ -277,6 +290,7 @@ unsigned long read_word_at_a_time(const void *addr)
 	__write_once_size(&(x), __u.__c, sizeof(x));	\
 	__u.__val;					\
 })
+#endif
 
 #endif /* __KERNEL__ */
 

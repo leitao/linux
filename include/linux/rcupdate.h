@@ -344,6 +344,9 @@ static inline void rcu_preempt_sleep_check(void) { }
 	rcu_dereference_sparse(p, space); \
 	((typeof(*p) __force __kernel *)(_________p1)); \
 })
+#ifdef __BEAM__
+#define __rcu_dereference_check(p, c, space) (p)
+#else
 #define __rcu_dereference_check(p, c, space) \
 ({ \
 	/* Dependency order vs. p above. */ \
@@ -352,6 +355,7 @@ static inline void rcu_preempt_sleep_check(void) { }
 	rcu_dereference_sparse(p, space); \
 	((typeof(*p) __force __kernel *)(________p1)); \
 })
+#endif
 #define __rcu_dereference_protected(p, c, space) \
 ({ \
 	RCU_LOCKDEP_WARN(!(c), "suspicious rcu_dereference_protected() usage"); \

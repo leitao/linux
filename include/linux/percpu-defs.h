@@ -232,11 +232,15 @@ do {									\
 #define SHIFT_PERCPU_PTR(__p, __offset)					\
 	RELOC_HIDE((typeof(*(__p)) __kernel __force *)(__p), (__offset))
 
+#ifdef __BEAM__
+#define per_cpu_ptr(ptr, cpu)	(ptr)
+#else
 #define per_cpu_ptr(ptr, cpu)						\
 ({									\
 	__verify_pcpu_ptr(ptr);						\
 	SHIFT_PERCPU_PTR((ptr), per_cpu_offset((cpu)));			\
 })
+#endif
 
 #define raw_cpu_ptr(ptr)						\
 ({									\
@@ -254,6 +258,11 @@ do {									\
 #define this_cpu_ptr(ptr) raw_cpu_ptr(ptr)
 #endif
 
+#ifdef __BEAM__
+#undef this_cpu_ptr
+#define this_cpu_ptr(ptr) (ptr)
+#endif
+
 #else	/* CONFIG_SMP */
 
 #define VERIFY_PERCPU_PTR(__p)						\
@@ -262,7 +271,11 @@ do {									\
 	(typeof(*(__p)) __kernel __force *)(__p);			\
 })
 
+#ifdef __BEAM__
+#define per_cpu_ptr(ptr, cpu)	(ptr)
+#else
 #define per_cpu_ptr(ptr, cpu)	({ (void)(cpu); VERIFY_PERCPU_PTR(ptr); })
+#endif
 #define raw_cpu_ptr(ptr)	per_cpu_ptr(ptr, 0)
 #define this_cpu_ptr(ptr)	raw_cpu_ptr(ptr)
 
@@ -506,7 +519,11 @@ do {									\
  * Operations with implied preemption/interrupt protection.  These
  * operations can be used without worrying about preemption or interrupt.
  */
+#ifdef __BEAM__
+#define this_cpu_read(pcp)		(pcp)
+#else
 #define this_cpu_read(pcp)		__pcpu_size_call_return(this_cpu_read_, pcp)
+#endif
 #define this_cpu_write(pcp, val)	__pcpu_size_call(this_cpu_write_, pcp, val)
 #define this_cpu_add(pcp, val)		__pcpu_size_call(this_cpu_add_, pcp, val)
 #define this_cpu_and(pcp, val)		__pcpu_size_call(this_cpu_and_, pcp, val)

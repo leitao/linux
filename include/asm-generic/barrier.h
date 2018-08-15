@@ -154,11 +154,19 @@ do {									\
 #endif
 
 #ifndef smp_store_release
+#ifdef __BEAM__
+#define smp_store_release(p, v) WRITE_ONCE(*p, v);
+#else
 #define smp_store_release(p, v) __smp_store_release(p, v)
+#endif
 #endif
 
 #ifndef smp_load_acquire
+#ifdef __BEAM__
+#define smp_load_acquire(p)  ((typeof(*p))(p))
+#else
 #define smp_load_acquire(p) __smp_load_acquire(p)
+#endif
 #endif
 
 #else	/* !CONFIG_SMP */

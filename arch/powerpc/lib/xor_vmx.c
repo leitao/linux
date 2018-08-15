@@ -22,7 +22,7 @@
  * Sparse (as at v0.5.0) gets very, very confused by this file.
  * Make it a bit simpler for it.
  */
-#if !defined(__CHECKER__)
+#if !defined(__CHECKER__) && !defined(__BEAM__)
 #include <altivec.h>
 #else
 #define vec_xor(a, b) a ^ b

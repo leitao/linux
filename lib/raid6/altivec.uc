@@ -9,6 +9,9 @@
  *   (at your option) any later version; incorporated herein by reference.
  *
  * ----------------------------------------------------------------------- */
+#ifdef __BEAM__
+extern void beam_dummy_variable_to_avoid_empty_source_file;
+#else
 
 /*
  * raid6altivec$#.c
@@ -128,5 +131,7 @@ const struct raid6_calls raid6_altivec$# = {
 	"altivecx$#",
 	0
 };
+#endif /* __BEAM__ */
 
 #endif /* CONFIG_ALTIVEC */
+
