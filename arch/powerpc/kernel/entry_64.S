@@ -128,6 +128,23 @@ BEGIN_FW_FTR_SECTION
 END_FW_FTR_SECTION_IFSET(FW_FEATURE_SPLPAR)
 #endif /* CONFIG_VIRT_CPU_ACCOUNTING_NATIVE && CONFIG_PPC_SPLPAR */
 
+#if CONFIG_PPC_TRANSACTIONAL_MEM
+	TM_KERNEL_ENTRY
+	cmpdi	r3, 0x1
+	bne	44f
+	/* Treclaim occured, fixing the TM cause and restoring the volatile
+	 * registers */
+	ld	r3,PACACURRENT(r13)
+	li	r4,TM_CAUSE_SYSCALL
+	bl	tm_fix_failure_cause
+	/* Restore the volatile registers */
+	REST_GPR(0,r1)
+	REST_4GPRS(3,r1)
+	REST_2GPRS(7,r1)
+44:	/* treclaim was not called, just restore r3 and r0 */
+	REST_GPR(3, r1)
+	REST_GPR(0, r1)
+#endif
 	/*
 	 * A syscall should always be called with interrupts enabled
 	 * so we just unconditionally hard-enable here. When some kind
