@@ -1008,7 +1008,18 @@ static inline void __switch_to_tm(struct task_struct *prev,
 	/* we do not need to do any TM on context switch anymore */
 	WARN_ON(MSR_TM_ACTIVE(mfmsr()));
 
-	tm_fix_failure_cause(prev, TM_CAUSE_RESCHED);
+	if (tm_enabled(prev)) {
+		/* If TM is enabled for the thread, it needs to, at least, save
+		 * the SPRs */
+		tm_enable();
+		tm_save_sprs(&prev->thread);
+
+		/* If we got here with an active transaction, then, it was
+		 * aborted and the fix the failure case needs to be fixed */
+		if (MSR_TM_ACTIVE(prev->thread.regs->msr)) {
+			tm_fix_failure_cause(prev, TM_CAUSE_RESCHED);
+		}
+	 }
 }
 
 /*
@@ -1035,8 +1046,20 @@ void restore_tm_state(struct pt_regs *regs)
 	 * again, anything else could lead to an incorrect ckpt_msr being
 	 * saved and therefore incorrect signal contexts.
 	 */
-	if (!MSR_TM_ACTIVE(regs->msr))
+	if (!MSR_TM_ACTIVE(regs->msr)) {
+		/* If the transaction is not active but TM is enabled, we need
+		 * to restore the SPRs, which could be read any time. */
+		if (regs->msr & MSR_TM){
+			tm_enable();
+			tm_restore_sprs(&current->thread);
+		}
+		/*
+		else {
+			printk("Shouldn't be here\n");
+		} */
+		/* We always return if TM is not active */
 		return;
+	}
 
 	/* Does not clear the TIF_RESTORE_TM if we are not returning in a
 	 * active transaction. We are basically defering the recheckpoint for
