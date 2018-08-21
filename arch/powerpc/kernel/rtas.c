@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/reboot.h>
 #include <linux/syscalls.h>
+#include <linux/nospec.h>
 
 #include <asm/prom.h>
 #include <asm/rtas.h>
@@ -1056,7 +1057,7 @@ SYSCALL_DEFINE1(rtas, struct rtas_args __user *, uargs)
 	struct rtas_args args;
 	unsigned long flags;
 	char *buff_copy, *errbuf = NULL;
-	int nargs, nret, token;
+	int index, nargs, nret, token;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -1084,7 +1085,8 @@ SYSCALL_DEFINE1(rtas, struct rtas_args __user *, uargs)
 	if (token == RTAS_UNKNOWN_SERVICE)
 		return -EINVAL;
 
-	args.rets = &args.args[nargs];
+	index = array_index_nospec(nargs, ARRAY_SIZE(args.args));
+	args.rets = &args.args[index];
 	memset(args.rets, 0, nret * sizeof(rtas_arg_t));
 
 	/* Need to handle ibm,suspend_me call specially */
