@@ -871,6 +871,8 @@ static inline bool tm_enabled(struct task_struct *tsk)
 static void tm_reclaim_thread(struct thread_struct *thr,
 			      struct thread_info *ti, uint8_t cause)
 {
+	struct task_struct *tsk;
+
 	/*
 	 * Use the current MSR TM suspended bit to track if we have
 	 * checkpointed state outstanding.
@@ -889,9 +891,14 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 	if (!MSR_TM_SUSPENDED(mfmsr()))
 		return;
 
-	giveup_all(container_of(thr, struct task_struct, thread));
+	tsk = container_of(thr, struct task_struct, thread);
+	giveup_all(tsk);
 
 	tm_reclaim(thr, cause);
+
+	/* Save the failure case. Since the process might schedule and it will
+	 * be restored later */
+	tm_fix_failure_cause(tsk, cause);
 
 	/*
 	 * If we are in a transaction and FP is off then we can't have
@@ -1009,6 +1016,7 @@ static inline void __switch_to_tm(struct task_struct *prev,
 	WARN_ON(MSR_TM_ACTIVE(mfmsr()));
 
 	if (tm_enabled(prev)) {
+		prev->thread.load_tm++;
 		/* If TM is enabled for the thread, it needs to, at least, save
 		 * the SPRs */
 		tm_enable();
@@ -1018,6 +1026,13 @@ static inline void __switch_to_tm(struct task_struct *prev,
 		 * aborted and the fix the failure case needs to be fixed */
 		if (MSR_TM_ACTIVE(prev->thread.regs->msr)) {
 			tm_fix_failure_cause(prev, TM_CAUSE_RESCHED);
+		} else {
+			/* Disable TM when load_tm overflows */
+			if (prev->thread.load_tm == 0) {
+				prev->thread.regs->msr &= ~MSR_TM;
+				TM_DEBUG("Lazy disabling HTM for pid %d\n",
+					prev->pid);
+			}
 		}
 	 }
 }
