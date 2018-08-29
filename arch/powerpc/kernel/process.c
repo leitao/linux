@@ -896,8 +896,8 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 
 	tm_reclaim(thr, cause);
 
-	/* Save the failure case. Since the process might schedule and it will
-	 * be restored later */
+	/* Save the failure case. Since the process might schedule and
+	 * it will be restored later */
 	tm_fix_failure_cause(tsk, cause);
 
 	/*
@@ -1012,13 +1012,21 @@ void tm_fix_failure_cause(struct task_struct *task, uint8_t cause){
 static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
+	if (!cpu_has_feature(CPU_FTR_TM))
+		return;
+
+
 	/* we do not need to do any TM on context switch anymore */
 	WARN_ON(MSR_TM_ACTIVE(mfmsr()));
 
 	if (tm_enabled(prev)) {
+		/* Load_tm is incremented only when the task is scheduled out
+		 */
 		prev->thread.load_tm++;
-		/* If TM is enabled for the thread, it needs to, at least, save
-		 * the SPRs */
+
+		/* If TM is enabled for the thread, it needs to, at least,
+		 * save * the SPRs */
+
 		tm_enable();
 		tm_save_sprs(&prev->thread);
 
@@ -1027,14 +1035,19 @@ static inline void __switch_to_tm(struct task_struct *prev,
 		if (MSR_TM_ACTIVE(prev->thread.regs->msr)) {
 			tm_fix_failure_cause(prev, TM_CAUSE_RESCHED);
 		} else {
-			/* Disable TM when load_tm overflows */
+			/* TM active but not transactional. Just disable TM
+			 * when load_tm overflows */
 			if (prev->thread.load_tm == 0) {
 				prev->thread.regs->msr &= ~MSR_TM;
-				TM_DEBUG("Lazy disabling HTM for pid %d\n",
-					prev->pid);
 			}
 		}
-	 }
+	}
+
+	/* If the next task has TM enabled, restore the SPRs */
+	if (tm_enabled(new)) {
+		tm_enable();
+		tm_restore_sprs(&new->thread);
+	}
 }
 
 /*
@@ -1565,6 +1578,7 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 	flush_all_to_thread(src);
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	WARN_ON(MSR_TM_SUSPENDED(mfmsr()));
+	__switch_to_tm(src, src);
 #endif
 
 	*dst = *src;
