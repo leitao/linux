@@ -203,11 +203,11 @@ unsigned long get_tm_stackpointer(struct task_struct *tsk)
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	BUG_ON(tsk != current);
 
-	WARN_ON(MSR_TM_SUSPENDED(mfmsr()));
-
-	if (MSR_TM_ACTIVE(tsk->thread.regs->msr))
-		return tsk->thread.ckpt_regs.gpr[1];
-
+	if (MSR_TM_ACTIVE(tsk->thread.regs->msr)) {
+		tm_reclaim_current(TM_CAUSE_SIGNAL);
+		if (MSR_TM_TRANSACTIONAL(tsk->thread.regs->msr))
+			return tsk->thread.ckpt_regs.gpr[1];
+	}
 #endif
 	return tsk->thread.regs->gpr[1];
 }
