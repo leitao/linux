@@ -707,31 +707,25 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
  * active/suspended. It is not possible to check for PR|MSR_TS directly,
  * because we do not want to reclaim if we are coming from kernel, as in after
  * a trecheckpoint and IRQ replay */
-#define TM_KERNEL_ENTRY							\
+#define TM_KERNEL_ENTRY(cause)						\
 	ld      r3, _MSR(r1);						\
 	/* Check if coming from PR and skip. */				\
 	andi.   r0,r3,MSR_PR;						\
 	beq     1f;							\
 	rldicl. r0, r3, (64-MSR_TM_LG), 63;  /* TM enabled? */	\
-	beq+    1f;                         /* If TM disabled, leave*/	\
+	beq	1f;                         /* If TM disabled, leave*/	\
 	rldicl. r0,r3,(64-MSR_TS_LG), 62; /* SUSPENDED or ACTIVE*/	\
-	beq+   1f;                     /* Not SUSPENDED or ACTIVE */	\
+	beq	1f;                     /* Not SUSPENDED or ACTIVE */	\
 	/* TM Active */							\
 	bl      save_nvgprs;						\
 	RECONCILE_IRQ_STATE(r10,r11);					\
-	li      r3,TM_CAUSE_MISC;					\
+	li      r3,cause;						\
 	bl      tm_reclaim_current;					\
 	/* Return value. 1 == reclaim executed */			\
 	li	r3, 1;							\
 	b	2f;							\
 	/* Return value. 0 == reclaim executed */			\
-/*
-1:	mr 	r3, r0;							\
-	ld 	r4, _MSR(r1);						\
-	bl 	skipping;						\
-	li	r3, 0;							\
-*/
-1:	li r3, 0;							\
+1:	li 	r3, 0;							\
 2:
 #else
 #define TM_KERNEL_ENTRY
@@ -741,7 +735,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	EXCEPTION_PROLOG_COMMON(trap, area);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
-	TM_KERNEL_ENTRY;					\
+	TM_KERNEL_ENTRY(TM_CAUSE_MISC);					\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr;						\
 	b	ret
@@ -756,7 +750,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	EXCEPTION_PROLOG_COMMON_3(trap);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
-	TM_KERNEL_ENTRY;					\
+	TM_KERNEL_ENTRY(TM_CAUSE_MISC);			\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr
 

@@ -900,23 +900,16 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 	 * benefit of checking for a potential TM bad thing exception.
 	 */
 	if (!MSR_TM_SUSPENDED(mfmsr())) {
-		trace_printk("Leaving since we are not suspened %lx\n", thr->regs->msr);
+		trace_printk("Leaving since we are not suspened %lx with cause %x\n", thr->regs->msr, cause);
 		return;
 	}
-	trace_printk("reclaiming with %lx\n", thr->regs->msr);
-
 
 	tsk = container_of(thr, struct task_struct, thread);
 	giveup_all(tsk);
 
 	tm_reclaim(thr, cause);
 
-	/* Save the failure case. Since the process might schedule and
-	 * it will be restored later */
-	tm_fix_failure_cause(tsk, cause);
-
-	/* Saving SPRs because tm_reclaim can restore it leaving here */
-	tm_save_sprs(thr);
+	trace_printk("After treclaim, texasr is %lx\n", thr->tm_texasr);
 
 	/* We need to set the flag with _TIF_RESTORE_TM */
 	set_thread_flag(TIF_RESTORE_TM);
@@ -995,9 +988,6 @@ void tm_fix_failure_cause(struct task_struct *task, uint8_t cause){
 static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
-	if (!cpu_has_feature(CPU_FTR_TM))
-		return;
-
 
 	/* we do not need to do any TM on context switch anymore */
 	WARN_ON(MSR_TM_ACTIVE(mfmsr()));
@@ -1016,6 +1006,7 @@ static inline void __switch_to_tm(struct task_struct *prev,
 		 * save * the SPRs */
 
 		tm_enable();
+		trace_printk("OLD texasr = %lx\n", prev->thread.tm_texasr);
 		tm_save_sprs(&prev->thread);
 
 		/* If we got here with an active transaction, then, it was
@@ -1035,6 +1026,7 @@ static inline void __switch_to_tm(struct task_struct *prev,
 	if (tm_enabled(new)) {
 		tm_enable();
 		tm_restore_sprs(&new->thread);
+		trace_printk("New texasr = %lx\n", new->thread.tm_texasr);
 	}
 }
 

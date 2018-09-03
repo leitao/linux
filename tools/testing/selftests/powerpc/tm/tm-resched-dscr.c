@@ -77,6 +77,7 @@ int test_body(void)
 		);
 		assert(rv); /* make sure the transaction aborted */
 		if ((texasr >> 56) != TM_CAUSE_RESCHED) {
+			printf("texasr = %lx\n", texasr >> 56);
 			continue;
 		}
 		if (dscr2 != dscr1) {
