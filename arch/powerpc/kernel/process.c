@@ -960,6 +960,9 @@ void tm_recheckpoint(struct thread_struct *thread)
 	local_irq_save(flags);
 	hard_irq_disable();
 
+	/* Dooming the transaction */
+	thread->tm_texasr |= TEXASR_FS;
+
 	/* The TM SPRs are restored here, so that TEXASR.FS can be set
 	 * before the trecheckpoint and no explosion occurs.
 	 */
@@ -1061,11 +1064,8 @@ void restore_tm_state(struct pt_regs *regs)
 			tm_enable();
 			tm_restore_sprs(&current->thread);
 		}
-		/*
-		else {
-			printk("Shouldn't be here\n");
-		} */
-		/* We always return if TM is not active */
+
+		/* Return since transaction was not active */
 		return;
 	}
 
