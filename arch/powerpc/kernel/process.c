@@ -618,6 +618,17 @@ void do_send_trap(struct pt_regs *regs, unsigned long address,
 				    (void __user *)address);
 }
 #else	/* !CONFIG_PPC_ADV_DEBUG_REGS */
+void skipping(unsigned long r3, unsigned long r4){
+	trace_printk("Skipping r3 = %lx\n", r3);
+	trace_printk("Skipping r4 = %lx\n", r4);
+}
+void print_r3(unsigned long r3, unsigned long r4){
+	if (r3 == 0)
+		return;
+	trace_printk("r3 = %lx\n", r3);
+	trace_printk("r4 = %lx\n", r4);
+}
+
 void do_break (struct pt_regs *regs, unsigned long address,
 		    unsigned long error_code)
 {
@@ -888,8 +899,12 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 	 * some specific thread_struct bit, as it has the additional
 	 * benefit of checking for a potential TM bad thing exception.
 	 */
-	if (!MSR_TM_SUSPENDED(mfmsr()))
+	if (!MSR_TM_SUSPENDED(mfmsr())) {
+		trace_printk("Leaving since we are not suspened %lx\n", thr->regs->msr);
 		return;
+	}
+	trace_printk("reclaiming with %lx\n", thr->regs->msr);
+
 
 	tsk = container_of(thr, struct task_struct, thread);
 	giveup_all(tsk);
@@ -899,6 +914,12 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 	/* Save the failure case. Since the process might schedule and
 	 * it will be restored later */
 	tm_fix_failure_cause(tsk, cause);
+
+	/* Saving SPRs because tm_reclaim can restore it leaving here */
+	tm_save_sprs(thr);
+
+	/* We need to set the flag with _TIF_RESTORE_TM */
+	set_thread_flag(TIF_RESTORE_TM);
 
 	/*
 	 * If we are in a transaction and FP is off then we can't have
@@ -980,6 +1001,11 @@ static inline void __switch_to_tm(struct task_struct *prev,
 
 	/* we do not need to do any TM on context switch anymore */
 	WARN_ON(MSR_TM_ACTIVE(mfmsr()));
+	if (MSR_TM_ACTIVE(mfmsr())){
+		printk("we should never be there\n");
+		trace_printk("++++++++++++==== HERE +========\n");
+		tm_reclaim_current(0xff);
+	}
 
 	if (tm_enabled(prev)) {
 		/* Load_tm is incremented only when the task is scheduled out

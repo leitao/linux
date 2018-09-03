@@ -712,10 +712,10 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	/* Check if coming from PR and skip. */				\
 	andi.   r0,r3,MSR_PR;						\
 	beq     1f;							\
-	rldicl. r0, r3, (64-MSR_TM_LG), (64-1);  /* TM enabled? */	\
+	rldicl. r0, r3, (64-MSR_TM_LG), 63;  /* TM enabled? */	\
 	beq+    1f;                         /* If TM disabled, leave*/	\
-	rldicl. r0,r3,(64-MSR_TS_LG),(64-2); /* SUSPENDED or ACTIVE*/	\
-	beql+   1f;                     /* Not SUSPENDED or ACTIVE */	\
+	rldicl. r0,r3,(64-MSR_TS_LG), 62; /* SUSPENDED or ACTIVE*/	\
+	beq+   1f;                     /* Not SUSPENDED or ACTIVE */	\
 	/* TM Active */							\
 	bl      save_nvgprs;						\
 	RECONCILE_IRQ_STATE(r10,r11);					\
@@ -723,8 +723,16 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	bl      tm_reclaim_current;					\
 	/* Return value. 1 == reclaim executed */			\
 	li	r3, 1;							\
+	b	2f;							\
 	/* Return value. 0 == reclaim executed */			\
-1:	li	r3, 0;
+/*
+1:	mr 	r3, r0;							\
+	ld 	r4, _MSR(r1);						\
+	bl 	skipping;						\
+	li	r3, 0;							\
+*/
+1:	li r3, 0;							\
+2:
 #else
 #define TM_KERNEL_ENTRY
 #endif

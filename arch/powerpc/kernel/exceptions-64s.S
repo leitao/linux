@@ -847,7 +847,10 @@ EXC_COMMON_BEGIN(program_check_common)
 	b 3f				/* Jump into the macro !!	*/
 1:	EXCEPTION_PROLOG_COMMON(0x700, PACA_EXGEN)
 	bl	save_nvgprs
+	ld      r3, _MSR(r1)
 	TM_KERNEL_ENTRY
+	ld	r4, _MSR(r1)
+	bl	print_r3
 	RECONCILE_IRQ_STATE(r10, r11)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	bl	program_check_exception

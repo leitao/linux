@@ -55,6 +55,8 @@ extern void do_send_trap(struct pt_regs *regs, unsigned long address,
 
 extern void do_break(struct pt_regs *regs, unsigned long address,
 		     unsigned long error_code);
+extern void print_r3(unsigned long r, unsigned long r2);
+extern void skipping(unsigned long r, unsigned long r2);
 #endif
 
 #endif /* _ASM_POWERPC_DEBUG_H */
