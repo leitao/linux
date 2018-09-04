@@ -1038,18 +1038,40 @@ static inline void __switch_to_tm(struct task_struct *prev,
 static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
-	if (cpu_has_feature(CPU_FTR_TM)) {
-		if (tm_enabled(prev) || tm_enabled(new))
-			tm_enable();
+	if (!cpu_has_feature(CPU_FTR_TM))
+		return;
 
-		if (tm_enabled(prev)) {
-			prev->thread.load_tm++;
-			tm_reclaim_task(prev);
-			if (!MSR_TM_ACTIVE(prev->thread.regs->msr) && prev->thread.load_tm == 0)
+	/* It is a bug if we arrived so late with a memory active (more
+	 * precisely suspended) */
+	BUG_ON(MSR_TM_ACTIVE(mfmsr()));
+
+	if (tm_enabled(prev)) {
+		/* Load_tm is incremented only when the task is scheduled out
+		 */
+		prev->thread.load_tm++;
+
+		/* If TM is enabled for the thread, it needs to, at least,
+		 * save * the SPRs */
+		tm_enable();
+		tm_save_sprs(&prev->thread);
+
+		/* If we got here with an active transaction, then, it was
+		 * aborted and the fix the failure case needs to be fixed */
+		if (MSR_TM_ACTIVE(prev->thread.regs->msr)) {
+			tm_fix_failure_cause(prev, TM_CAUSE_RESCHED);
+		} else {
+			/* TM active but not transactional. Just disable TM
+			 * when load_tm overflows */
+			if (prev->thread.load_tm == 0) {
 				prev->thread.regs->msr &= ~MSR_TM;
+			}
 		}
+	}
 
-		tm_recheckpoint_new_task(new);
+	/* If the next task has TM enabled, restore the SPRs */
+	if (tm_enabled(new)) {
+		tm_enable();
+		tm_restore_sprs(&new->thread);
 	}
 }
 
