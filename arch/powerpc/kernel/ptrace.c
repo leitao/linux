@@ -136,9 +136,12 @@ static void flush_tmregs_to_thread(struct task_struct *tsk)
 	if ((!cpu_has_feature(CPU_FTR_TM)) || (tsk != current))
 		return;
 
-	if (MSR_TM_SUSPENDED(mfmsr())) {
-		tm_reclaim_current(TM_CAUSE_SIGNAL);
-	} else {
+	if (tsk->thread.regs->msr & MSR_TM) {
+		/*
+		 * Only flush TM SPRs to the thread if TM was enabled,
+		 * otherwise (TM lazily disabled), the thread already
+		 * contains the latest SPR value
+		 */
 		tm_enable();
 		tm_save_sprs(&(tsk->thread));
 	}
