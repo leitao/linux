@@ -891,6 +891,9 @@ static void tm_reclaim_thread(struct thread_struct *thr,
 
 	tm_reclaim(thr, cause);
 
+	/* We need to set the flag with _TIF_RESTORE_TM */
+	set_thread_flag(TIF_RESTORE_TM);
+
 	/*
 	 * If we are in a transaction and FP is off then we can't have
 	 * used FP inside that transaction. Hence the checkpointed
