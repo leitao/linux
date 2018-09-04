@@ -1049,8 +1049,6 @@ static inline void __switch_to_tm(struct task_struct *prev,
  */
 void restore_tm_state(struct pt_regs *regs)
 {
-	unsigned long msr_diff;
-
 	/*
 	 * This is the only moment we should clear TIF_RESTORE_TM as
 	 * it is here that ckpt_regs.msr and pt_regs.msr become the same
@@ -1061,19 +1059,35 @@ void restore_tm_state(struct pt_regs *regs)
 	if (!MSR_TM_ACTIVE(regs->msr))
 		return;
 
-	msr_diff = current->thread.ckpt_regs.msr & ~regs->msr;
-	msr_diff &= MSR_FP | MSR_VEC | MSR_VSX;
+	tm_enable();
+	/* The only place we recheckpoint */
+	tm_recheckpoint(&current->thread);
 
-	/* Ensure that restore_math() will restore */
-	if (msr_diff & MSR_FP)
-		current->thread.load_fp = 1;
+	/*
+	 * Restore the facility registers that were clobbered during
+	 * recheckpoint.
+	 */
+	if (regs->msr & MSR_FP) {
+		/*
+		 * Using load_fp_state() instead of restore_fp() because we
+		 * want to force the restore, independent of
+		 * tsk->thread.load_fp. Same for other cases below.
+		 */
+		load_fp_state(&current->thread.fp_state);
+	}
 #ifdef CONFIG_ALTIVEC
-	if (cpu_has_feature(CPU_FTR_ALTIVEC) && msr_diff & MSR_VEC)
-		current->thread.load_vec = 1;
+	if (cpu_has_feature(CPU_FTR_ALTIVEC) && regs->msr & MSR_VEC)
+		load_vr_state(&current->thread.vr_state);
 #endif
-	restore_math(regs);
-
-	regs->msr |= msr_diff;
+#ifdef CONFIG_VSX
+	if (cpu_has_feature(CPU_FTR_VSX) && regs->msr & MSR_VSX) {
+		/*
+		 * If VSX is enabled, it is expected that VEC and FP are
+		 * also enabled and already restored the full register set.
+		 * Cause a warning if that is not the case.
+		 */
+		WARN_ON(!(regs->msr & MSR_VEC) || !(regs->msr & MSR_FP)); }
+#endif
 }
 
 #else
