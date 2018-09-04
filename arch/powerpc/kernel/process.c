@@ -1069,6 +1069,10 @@ void restore_tm_state(struct pt_regs *regs)
 	if (!MSR_TM_ACTIVE(regs->msr))
 		return;
 
+	tm_enable();
+	/* The only place we recheckpoint */
+	tm_recheckpoint(&current->thread);
+
 	msr_diff = current->thread.ckpt_regs.msr & ~regs->msr;
 	msr_diff &= MSR_FP | MSR_VEC | MSR_VSX;
 
