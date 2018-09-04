@@ -35,6 +35,7 @@
  * implementations as possible.
  */
 #include <asm/head-64.h>
+#include <asm/tm.h>
 
 /* PACA save area offsets (exgen, exmc, etc) */
 #define EX_R9		0
@@ -700,10 +701,44 @@ BEGIN_FTR_SECTION				\
 	beql	ppc64_runlatch_on_trampoline;	\
 END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+
+/* Macro that will reclaim if it is called coming from PR and has TM
+ * active/suspended. It is not possible to check for PR|MSR_TS directly,
+ * because we do not want to reclaim if we are coming from kernel, as in after
+ * a trecheckpoint and IRQ replay.
+ * This macro has one argument which is the cause that will be used for
+ * treclaim, and returns 0 if the reclaim happened, or 0 if not.
+ */
+#define TM_KERNEL_ENTRY(cause)						\
+	ld      r3, _MSR(r1);						\
+	/* Check if coming from PR and skip. */				\
+	andi.   r0,r3,MSR_PR;						\
+	beq     1f;							\
+	rldicl. r0, r3, (64-MSR_TM_LG), 63;  /* TM enabled? */		\
+	beq     1f;			/* If TM disabled, leave*/	\
+	rldicl. r0,r3,(64-MSR_TS_LG), 62; /* SUSPENDED or ACTIVE*/	\
+	beq     1f;		/* Not SUSPENDED or ACTIVE */	\
+	/* TM Active */							\
+	bl      save_nvgprs;						\
+	RECONCILE_IRQ_STATE(r10,r11);					\
+	li      r3,cause;						\
+	bl      tm_reclaim_current;					\
+	/* Return value. 1 == reclaim executed */			\
+	li      r3, 1;							\
+	b       2f;							\
+	/* Return value. 0 == reclaim executed */			\
+1:	li    r3, 0;							\
+2:
+#else
+#define TM_KERNEL_ENTRY
+#endif
+
 #define EXCEPTION_COMMON(area, trap, label, hdlr, ret, additions) \
 	EXCEPTION_PROLOG_COMMON(trap, area);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	TM_KERNEL_ENTRY(TM_CAUSE_MISC);					\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr;						\
 	b	ret
@@ -718,6 +753,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	EXCEPTION_PROLOG_COMMON_3(trap);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	TM_KERNEL_ENTRY(TM_CAUSE_MISC);			\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr
 
