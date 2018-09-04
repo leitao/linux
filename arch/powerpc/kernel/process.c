@@ -85,6 +85,7 @@ extern unsigned long _get_SP(void);
  * other paths that we should never reach with suspend disabled.
  */
 bool tm_suspend_disabled __ro_after_init = false;
+static void tm_fix_failure_cause(struct task_struct *task, uint8_t cause);
 
 static void check_if_tm_restore_required(struct task_struct *tsk)
 {
@@ -986,6 +987,14 @@ void tm_recheckpoint(struct thread_struct *thread)
 	__tm_recheckpoint(thread);
 
 	local_irq_restore(flags);
+}
+
+/* Change thread->tm.texasr failure code */
+static void tm_fix_failure_cause(struct task_struct *task, uint8_t cause)
+{
+	/* Clear the cause first */
+	task->thread.tm_texasr &= ~TEXASR_FC;
+	task->thread.tm_texasr |= (unsigned long) cause << 56;
 }
 
 static inline void tm_recheckpoint_new_task(struct task_struct *new)
