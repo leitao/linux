@@ -988,7 +988,16 @@ void tm_recheckpoint(struct thread_struct *thread)
 	local_irq_restore(flags);
 }
 
-static inline void tm_recheckpoint_new_task(struct task_struct *new)
+/* Change thread->tm.texasr failure code */
+static void tm_fix_failure_cause(struct task_struct *task, uint8_t cause)
+{
+	/* Clear the cause first */
+	task->thread.tm_texasr &= ~TEXASR_FC;
+	task->thread.tm_texasr |= (unsigned long) cause << 56;
+}
+
+static inline void __switch_to_tm(struct task_struct *prev,
+		struct task_struct *new)
 {
 	if (!cpu_has_feature(CPU_FTR_TM))
 		return;
