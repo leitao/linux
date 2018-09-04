@@ -711,6 +711,10 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	 * Soft disable the IRQs, otherwise it might cause a CPU hang.	\
 	 */								\
 	RECONCILE_IRQ_STATE(r10, r11);					\
+	/*								\
+	 * Although this cause will be set initially, it might be	\
+	 * updated later, once the exception is better understood	\
+	 */								\
 	li      r3, cause;						\
 	bl      tm_reclaim_current;					\
 	li      r3, 1;		/* Reclaim happened */			\
