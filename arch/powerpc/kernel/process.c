@@ -77,6 +77,7 @@
 #endif
 
 extern unsigned long _get_SP(void);
+static void tm_fix_failure_cause(struct task_struct *task, uint8_t cause);
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 /*
@@ -986,6 +987,14 @@ void tm_recheckpoint(struct thread_struct *thread)
 	__tm_recheckpoint(thread);
 
 	local_irq_restore(flags);
+}
+
+/* Change thread->tm.texasr failure code */
+static void tm_fix_failure_cause(struct task_struct *task, uint8_t cause)
+{
+	/* Clear the cause first */
+	task->thread.tm_texasr &= ~TEXASR_FC;
+	task->thread.tm_texasr |= (unsigned long) cause << 56;
 }
 
 static inline void tm_recheckpoint_new_task(struct task_struct *new)
