@@ -569,21 +569,10 @@ static long restore_tm_sigcontexts(struct task_struct *tsk,
 		}
 	}
 #endif
-	tm_enable();
 	/* Make sure the transaction is marked as failed */
 	tsk->thread.tm_texasr |= TEXASR_FS;
-	/* This loads the checkpointed FP/VEC state, if used */
-	tm_recheckpoint(&tsk->thread);
-
-	msr_check_and_set(msr & (MSR_FP | MSR_VEC));
-	if (msr & MSR_FP) {
-		load_fp_state(&tsk->thread.fp_state);
-		regs->msr |= (MSR_FP | tsk->thread.fpexc_mode);
-	}
-	if (msr & MSR_VEC) {
-		load_vr_state(&tsk->thread.vr_state);
-		regs->msr |= MSR_VEC;
-	}
+	/* Guarantee that restore_tm_state() will be called */
+	set_thread_flag(TIF_RESTORE_TM);
 
 	return err;
 }
@@ -717,16 +706,15 @@ SYSCALL_DEFINE0(rt_sigreturn)
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	/*
-	 * If there is a transactional state then throw it away.
-	 * The purpose of a sigreturn is to destroy all traces of the
-	 * signal frame, this includes any transactional state created
-	 * within in. We only check for suspended as we can never be
-	 * active in the kernel, we are active, there is nothing better to
-	 * do than go ahead and Bad Thing later.
-	 * The cause is not important as there will never be a
+	 * If the transaction is active at this point, it means that
+	 * TM_KERNEL_ENTRY was not invoked properly and it is a bug.
+	 * If this is the case, print a warning and try to work around,
+	 * calling tm_reclaim_current() to discard the footprint.
+	 *
+	 * The failure cause is not important as there will never be a
 	 * recheckpoint so it's not user visible.
 	 */
-	if (MSR_TM_SUSPENDED(mfmsr()))
+	if (WARN_ON(MSR_TM_SUSPENDED(mfmsr())))
 		tm_reclaim_current(0);
 
 	if (__get_user(msr, &uc->uc_mcontext.gp_regs[PT_MSR]))
