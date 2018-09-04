@@ -805,6 +805,7 @@ EXC_COMMON_BEGIN(alignment_common)
 	std	r3,_DAR(r1)
 	std	r4,_DSISR(r1)
 	bl	save_nvgprs
+	TM_KERNEL_ENTRY(TM_CAUSE_ALIGNMENT)
 	RECONCILE_IRQ_STATE(r10, r11)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	bl	alignment_exception
@@ -839,6 +840,8 @@ EXC_COMMON_BEGIN(program_check_common)
 	b 3f				/* Jump into the macro !!	*/
 1:	EXCEPTION_PROLOG_COMMON(0x700, PACA_EXGEN)
 	bl	save_nvgprs
+	ld      r3, _MSR(r1)
+	TM_KERNEL_ENTRY(TM_CAUSE_FAC_UNAV)
 	RECONCILE_IRQ_STATE(r10, r11)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	bl	program_check_exception
@@ -1738,7 +1741,9 @@ do_hash_page:
 
 /* Here we have a page fault that hash_page can't handle. */
 handle_page_fault:
-11:	andis.  r0,r4,DSISR_DABRMATCH@h
+11:	TM_KERNEL_ENTRY(TM_CAUSE_TLBI)
+	ld      r4,_DSISR(r1)
+	andis.  r0,r4,DSISR_DABRMATCH@h
 	bne-    handle_dabr_fault
 	ld	r4,_DAR(r1)
 	ld	r5,_DSISR(r1)
@@ -1768,7 +1773,9 @@ handle_dabr_fault:
  * the PTE insertion
  */
 13:	bl	save_nvgprs
-	mr	r5,r3
+	mr      r5,r3
+	TM_KERNEL_ENTRY(TM_CAUSE_TLBI)
+	REST_GPR(3,r1)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	ld	r4,_DAR(r1)
 	bl	low_hash_fault
@@ -1783,7 +1790,8 @@ handle_dabr_fault:
  * the access, or panic if there isn't a handler.
  */
 77:	bl	save_nvgprs
-	mr	r4,r3
+	TM_KERNEL_ENTRY(TM_CAUSE_TLBI)
+	ld      r4,_DAR(r1)
 	addi	r3,r1,STACK_FRAME_OVERHEAD
 	li	r5,SIGSEGV
 	bl	bad_page_fault

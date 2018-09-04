@@ -131,6 +131,16 @@ BEGIN_FW_FTR_SECTION
 END_FW_FTR_SECTION_IFSET(FW_FEATURE_SPLPAR)
 #endif /* CONFIG_VIRT_CPU_ACCOUNTING_NATIVE && CONFIG_PPC_SPLPAR */
 
+#if CONFIG_PPC_TRANSACTIONAL_MEM
+	TM_KERNEL_ENTRY(TM_CAUSE_SYSCALL)
+	cmpdi	r3, 0x1
+	bne	44f
+	/* Restore from r4 to r12 */
+	REST_8GPRS(4,r1)
+44:	/* treclaim was not called, just restore r3 and r0 */
+	REST_GPR(3, r1)
+	REST_GPR(0, r1)
+#endif
 	/*
 	 * A syscall should always be called with interrupts enabled
 	 * so we just unconditionally hard-enable here. When some kind
@@ -1037,6 +1047,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	bl	__check_irq_replay
 	cmpwi	cr0,r3,0
 	beq	.Lrestore_no_replay
+
  
 	/*
 	 * We need to re-emit an interrupt. We do so by re-using our

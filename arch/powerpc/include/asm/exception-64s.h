@@ -36,6 +36,7 @@
  */
 #include <asm/head-64.h>
 #include <asm/feature-fixups.h>
+#include <asm/tm.h>
 
 /* PACA save area offsets (exgen, exmc, etc) */
 #define EX_R9		0
@@ -686,10 +687,53 @@ BEGIN_FTR_SECTION				\
 	beql	ppc64_runlatch_on_trampoline;	\
 END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+
+/*
+ * This macro will reclaim a transaction if called when coming from userspace
+ * (MSR.PR = 1) and if the transaction state is active or suspended.
+ * Since we don't want to reclaim when coming from kernel, for instance after
+ * a trechkpt. or a IRQ replay, the live MSR is not useful and instead of it the
+ * MSR from thread stack and it is used to check the MSR.PR bit.
+ * This macro has one argument which is the cause that will be used by treclaim.
+ * and returns in r3 '1' if the reclaim happens or '2' if reclaim does
+ * not happen, which is useful to know what registers were clobbered.
+ *
+ * NOTE: If addition registers are clobbered here, make sure the callee
+ * function restores them before proceeding.
+ */
+#define TM_KERNEL_ENTRY(cause)						\
+	ld      r3, _MSR(r1);						\
+	andi.   r0, r3, MSR_PR;	/* Coming from userspace? */		\
+	beq     1f;		/* Skip reclaim if MSR.PR != 1 */	\
+	rldicl. r0, r3, (64-MSR_TM_LG), 63; /* Is TM enabled? */	\
+	beq     1f;		/* Skip reclaim if TM is off */		\
+	rldicl. r0, r3, (64-MSR_TS_LG), 62;	/* Is active */		\
+	beq     1f;		/* Skip reclaim if neither */		\
+	/*								\
+	 * If there is a transaction active or suspended save the	\
+	 * non-volatile GPRs if they are not already saved.		\
+	 */								\
+	bl      save_nvgprs;						\
+	/*								\
+	 * Soft disable the IRQs, otherwise it might cause a CPU hang.	\
+	 */								\
+	RECONCILE_IRQ_STATE(r10, r11);					\
+	li      r3, cause;						\
+	bl      tm_reclaim_current;					\
+	li      r3, 1;		/* Reclaim happened */			\
+	b       2f;							\
+1:	li      r3, 0;		/* Reclaim didn't happen */		\
+2:
+#else
+#define TM_KERNEL_ENTRY(cause)
+#endif
+
 #define EXCEPTION_COMMON(area, trap, label, hdlr, ret, additions) \
 	EXCEPTION_PROLOG_COMMON(trap, area);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	TM_KERNEL_ENTRY(TM_CAUSE_MISC);					\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr;						\
 	b	ret
@@ -704,6 +748,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CTRL)
 	EXCEPTION_PROLOG_COMMON_3(trap);			\
 	/* Volatile regs are potentially clobbered here */	\
 	additions;						\
+	TM_KERNEL_ENTRY(TM_CAUSE_MISC);				\
 	addi	r3,r1,STACK_FRAME_OVERHEAD;			\
 	bl	hdlr
 
