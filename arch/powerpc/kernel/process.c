@@ -978,6 +978,11 @@ void tm_recheckpoint(struct thread_struct *thread)
 	local_irq_save(flags);
 	hard_irq_disable();
 
+	/* Make sure the failure summary is set, since the transaction will be
+	 * doomed.
+	 */
+	thread->tm_texasr |= TEXASR_FS;
+
 	/* The TM SPRs are restored here, so that TEXASR.FS can be set
 	 * before the trecheckpoint and no explosion occurs.
 	 */
