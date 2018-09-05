@@ -104,6 +104,9 @@ int main(void)
 	OFFSET(THREAD_FPSAVEAREA, thread_struct, fp_save_area);
 	OFFSET(FPSTATE_FPSCR, thread_fp_state, fpscr);
 	OFFSET(THREAD_LOAD_FP, thread_struct, load_fp);
+	OFFSET(THREAD_DSCR, thread_struct, dscr);
+	OFFSET(THREAD_PPR, thread_struct, ppr);
+	OFFSET(THREAD_TAR, thread_struct, tar);
 #ifdef CONFIG_ALTIVEC
 	OFFSET(THREAD_VRSTATE, thread_struct, vr_state.vr);
 	OFFSET(THREAD_VRSAVEAREA, thread_struct, vr_save_area);

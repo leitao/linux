@@ -860,6 +860,30 @@ static inline bool hw_brk_match(struct arch_hw_breakpoint *a,
 	return true;
 }
 
+/*
+ * After recheckpoint, the SPRs are set with the checkpointed values.
+ * This function restore the SPRS to the transactional values before getting
+ * back to userspace.
+ */
+static inline void restore_sprs_after_recheckpoint(struct thread_struct *thread)
+{
+#ifdef CONFIG_PPC_BOOK3S_64
+	if (cpu_has_feature(CPU_FTR_DSCR)) {
+		if (thread->dscr != thread->tm_dscr)
+			mtspr(SPRN_DSCR, thread->dscr);
+	}
+
+	if (cpu_has_feature(CPU_FTR_ARCH_207S)) {
+		if (thread->tar != thread->tm_tar)
+			mtspr(SPRN_TAR, thread->tar);
+	}
+
+	if (thread->ppr != thread->tm_ppr)
+		mtspr(SPRN_PPR, thread->ppr);
+#endif
+}
+
+
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 
 static inline bool tm_enabled(struct task_struct *tsk)
@@ -942,6 +966,7 @@ void tm_recheckpoint(struct thread_struct *thread)
 	tm_restore_sprs(thread);
 
 	__tm_recheckpoint(thread);
+	restore_sprs_after_recheckpoint(thread);
 
 	local_irq_restore(flags);
 }
