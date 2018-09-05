@@ -920,48 +920,6 @@ void tm_reclaim_current(uint8_t cause)
 	tm_reclaim_thread(&current->thread, current_thread_info(), cause);
 }
 
-static inline void tm_reclaim_task(struct task_struct *tsk)
-{
-	/* We have to work out if we're switching from/to a task that's in the
-	 * middle of a transaction.
-	 *
-	 * In switching we need to maintain a 2nd register state as
-	 * oldtask->thread.ckpt_regs.  We tm_reclaim(oldproc); this saves the
-	 * checkpointed (tbegin) state in ckpt_regs, ckfp_state and
-	 * ckvr_state
-	 *
-	 * We also context switch (save) TFHAR/TEXASR/TFIAR in here.
-	 */
-	struct thread_struct *thr = &tsk->thread;
-
-	if (!thr->regs)
-		return;
-
-	if (!MSR_TM_ACTIVE(thr->regs->msr))
-		goto out_and_saveregs;
-
-	WARN_ON(tm_suspend_disabled);
-
-	TM_DEBUG("--- tm_reclaim on pid %d (NIP=%lx, "
-		 "ccr=%lx, msr=%lx, trap=%lx)\n",
-		 tsk->pid, thr->regs->nip,
-		 thr->regs->ccr, thr->regs->msr,
-		 thr->regs->trap);
-
-	tm_reclaim_thread(thr, task_thread_info(tsk), TM_CAUSE_RESCHED);
-
-	TM_DEBUG("--- tm_reclaim on pid %d complete\n",
-		 tsk->pid);
-
-out_and_saveregs:
-	/* Always save the regs here, even if a transaction's not active.
-	 * This context-switches a thread's TM info SPRs.  We do it here to
-	 * be consistent with the restore path (in recheckpoint) which
-	 * cannot happen later in _switch().
-	 */
-	tm_save_sprs(thr);
-}
-
 extern void __tm_recheckpoint(struct thread_struct *thread);
 
 void tm_recheckpoint(struct thread_struct *thread)
@@ -999,45 +957,6 @@ static void tm_fix_failure_cause(struct task_struct *task, uint8_t cause)
 	/* Clear the cause first */
 	task->thread.tm_texasr &= ~TEXASR_FC;
 	task->thread.tm_texasr |= (unsigned long) cause << 56;
-}
-
-static inline void __switch_to_tm(struct task_struct *prev,
-		struct task_struct *new)
-{
-	if (!cpu_has_feature(CPU_FTR_TM))
-		return;
-
-	/* Recheckpoint the registers of the thread we're about to switch to.
-	 *
-	 * If the task was using FP, we non-lazily reload both the original and
-	 * the speculative FP register states.  This is because the kernel
-	 * doesn't see if/when a TM rollback occurs, so if we take an FP
-	 * unavailable later, we are unable to determine which set of FP regs
-	 * need to be restored.
-	 */
-	if (!tm_enabled(new))
-		return;
-
-	if (!MSR_TM_ACTIVE(new->thread.regs->msr)){
-		tm_restore_sprs(&new->thread);
-		return;
-	}
-	/* Recheckpoint to restore original checkpointed register state. */
-	TM_DEBUG("*** tm_recheckpoint of pid %d (new->msr 0x%lx)\n",
-		 new->pid, new->thread.regs->msr);
-
-	tm_recheckpoint(&new->thread);
-
-	/*
-	 * The checkpointed state has been restored but the live state has
-	 * not, ensure all the math functionality is turned off to trigger
-	 * restore_math() to reload.
-	 */
-	new->thread.regs->msr &= ~(MSR_FP | MSR_VEC | MSR_VSX);
-
-	TM_DEBUG("*** tm_recheckpoint of pid %d complete "
-		 "(kernel msr 0x%lx)\n",
-		 new->pid, mfmsr());
 }
 
 static inline void __switch_to_tm(struct task_struct *prev,
