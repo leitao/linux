@@ -493,10 +493,6 @@ restore_gprs:
 	mtlr	r0
 	ld	r2, STK_GOT(r1)
 
-	/* Load CPU's default DSCR */
-	ld	r0, PACA_DSCR_DEFAULT(r13)
-	mtspr	SPRN_DSCR, r0
-
 	blr
 
 	/* ****************************************************************** */
