@@ -12,7 +12,6 @@
 #include <asm/ptrace.h>
 #include <asm/processor.h>
 
-#ifdef CONFIG_PPC64
 
 /*
  * PACA flags in paca->irq_happened.
@@ -47,7 +46,6 @@
 #define IRQS_PMI_DISABLED	2
 #define IRQS_ALL_DISABLED	(IRQS_DISABLED | IRQS_PMI_DISABLED)
 
-#endif /* CONFIG_PPC64 */
 
 #ifndef __ASSEMBLY__
 
@@ -60,7 +58,6 @@ extern void performance_monitor_exception(struct pt_regs *regs);
 extern void WatchdogException(struct pt_regs *regs);
 extern void unknown_exception(struct pt_regs *regs);
 
-#ifdef CONFIG_PPC64
 #include <asm/paca.h>
 
 static inline notrace unsigned long irq_soft_mask_return(void)
@@ -278,80 +275,6 @@ extern void irq_set_pending_from_srr1(unsigned long srr1);
 
 extern void force_external_irq_replay(void);
 
-#else /* CONFIG_PPC64 */
-
-#define SET_MSR_EE(x)	mtmsr(x)
-
-static inline unsigned long arch_local_save_flags(void)
-{
-	return mfmsr();
-}
-
-static inline void arch_local_irq_restore(unsigned long flags)
-{
-#if defined(CONFIG_BOOKE)
-	asm volatile("wrtee %0" : : "r" (flags) : "memory");
-#else
-	mtmsr(flags);
-#endif
-}
-
-static inline unsigned long arch_local_irq_save(void)
-{
-	unsigned long flags = arch_local_save_flags();
-#ifdef CONFIG_BOOKE
-	asm volatile("wrteei 0" : : : "memory");
-#elif defined(CONFIG_PPC_8xx)
-	wrtspr(SPRN_EID);
-#else
-	SET_MSR_EE(flags & ~MSR_EE);
-#endif
-	return flags;
-}
-
-static inline void arch_local_irq_disable(void)
-{
-#ifdef CONFIG_BOOKE
-	asm volatile("wrteei 0" : : : "memory");
-#elif defined(CONFIG_PPC_8xx)
-	wrtspr(SPRN_EID);
-#else
-	arch_local_irq_save();
-#endif
-}
-
-static inline void arch_local_irq_enable(void)
-{
-#ifdef CONFIG_BOOKE
-	asm volatile("wrteei 1" : : : "memory");
-#elif defined(CONFIG_PPC_8xx)
-	wrtspr(SPRN_EIE);
-#else
-	unsigned long msr = mfmsr();
-	SET_MSR_EE(msr | MSR_EE);
-#endif
-}
-
-static inline bool arch_irqs_disabled_flags(unsigned long flags)
-{
-	return (flags & MSR_EE) == 0;
-}
-
-static inline bool arch_irqs_disabled(void)
-{
-	return arch_irqs_disabled_flags(arch_local_save_flags());
-}
-
-#define hard_irq_disable()		arch_local_irq_disable()
-
-static inline bool arch_irq_disabled_regs(struct pt_regs *regs)
-{
-	return !(regs->msr & MSR_EE);
-}
-
-static inline void may_hard_irq_enable(void) { }
-
-#endif /* CONFIG_PPC64 */
 
 #define ARCH_IRQ_INIT_FLAGS	IRQ_NOREQUEST
 
