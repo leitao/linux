@@ -126,7 +126,7 @@ extern int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src
 
 #define _TIF_USER_WORK_MASK	(_TIF_SIGPENDING | _TIF_NEED_RESCHED | \
 				 _TIF_NOTIFY_RESUME | _TIF_UPROBE | \
-				 _TIF_RESTORE_TM | _TIF_PATCH_PENDING | \
+				 _TIF_PATCH_PENDING | \
 				 _TIF_FSCHECK)
 #define _TIF_PERSYSCALL_MASK	(_TIF_RESTOREALL|_TIF_NOERROR)
 
