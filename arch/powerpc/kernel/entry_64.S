@@ -255,7 +255,7 @@ system_call_exit:
 
 	ld	r9,TI_FLAGS(r12)
 	li	r11,-MAX_ERRNO
-	andi.	r0,r9,(_TIF_SYSCALL_DOTRACE|_TIF_SINGLESTEP|_TIF_USER_WORK_MASK|_TIF_PERSYSCALL_MASK)
+	andi.   r0,r9,(_TIF_SYSCALL_DOTRACE|_TIF_SINGLESTEP|_TIF_USER_WORK_MASK|_TIF_PERSYSCALL_MASK |_TIF_RESTORE_TM)
 	bne-	.Lsyscall_exit_work
 
 	andi.	r0,r8,MSR_FP
@@ -784,14 +784,6 @@ _GLOBAL(ret_from_except_lite)
 	SCHEDULE_USER
 	b	ret_from_except_lite
 2:
-#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
-	andi.	r0,r4,_TIF_USER_WORK_MASK & ~_TIF_RESTORE_TM
-	bne	3f		/* only restore TM if nothing else to do */
-	addi	r3,r1,STACK_FRAME_OVERHEAD
-	bl	restore_tm_state
-	b	restore
-3:
-#endif
 	bl	save_nvgprs
 	/*
 	 * Use a non volatile GPR to save and restore our thread_info flags
@@ -938,6 +930,19 @@ ALT_FTR_SECTION_END_IFCLR(CPU_FTR_STCX_CHECKS_ADDRESS)
 	 */
 	.globl	fast_exception_return
 fast_exception_return:
+
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
+	CURRENT_THREAD_INFO(r4, r1)
+	ld	r4,TI_FLAGS(r4)
+	andi.   r0,r4,_TIF_RESTORE_TM
+	beq	22f
+	ld	r4,_MSR(r1) 	/* TODO: MSR[!PR] shouldn't be here */
+	andi.	r0,r4,MSR_PR
+	beq	22f  /* Skip if Kernel thread */
+	addi	r3,r1,STACK_FRAME_OVERHEAD
+	bl	restore_tm_state
+22:
+#endif
 	ld	r3,_MSR(r1)
 	ld	r4,_CTR(r1)
 	ld	r0,_LINK(r1)
