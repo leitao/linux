@@ -1065,12 +1065,9 @@ static inline void __switch_to_tm(struct task_struct *prev,
  * don't know which of the checkpointed state and the transactional
  * state to use.
  */
-void restore_tm_state(struct pt_regs *reg)
+void restore_tm_state(struct pt_regs *regs)
 {
 	unsigned long msr_diff;
-	struct thread_struct *t;
-
-	t = &current->thread;
 
 	/*
 	 * This is the only moment we should clear TIF_RESTORE_TM as
@@ -1079,29 +1076,26 @@ void restore_tm_state(struct pt_regs *reg)
 	 * saved and therefore incorrect signal contexts.
 	 */
 	clear_thread_flag(TIF_RESTORE_TM);
-
-	if (!MSR_TM_ACTIVE(t->regs->msr)) {
-		trace_printk("Not active. Returning with %lx\n", t->regs->msr);
+	if (!MSR_TM_ACTIVE(regs->msr))
 		return;
-	}
 
 	tm_enable();
+	/* The only place we recheckpoint */
+	tm_recheckpoint(&current->thread);
 
-	tm_recheckpoint(t);
-
-	msr_diff = t->ckpt_regs.msr & ~reg->msr;
+	msr_diff = current->thread.ckpt_regs.msr & ~regs->msr;
 	msr_diff &= MSR_FP | MSR_VEC | MSR_VSX;
 
 	/* Ensure that restore_math() will restore */
 	if (msr_diff & MSR_FP)
-		t->load_fp = 1;
+		current->thread.load_fp = 1;
 #ifdef CONFIG_ALTIVEC
 	if (cpu_has_feature(CPU_FTR_ALTIVEC) && msr_diff & MSR_VEC)
-		t->load_vec = 1;
+		current->thread.load_vec = 1;
 #endif
-	restore_math(reg);
+	restore_math(regs);
 
-	reg->msr |= msr_diff;
+	regs->msr |= msr_diff;
 }
 
 #else
