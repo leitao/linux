@@ -888,12 +888,6 @@ static void tm_reclaim_thread(struct thread_struct *thr, uint8_t cause)
 	if (!MSR_TM_SUSPENDED(mfmsr()))
 		return;
 
-	if (WARN_ON((thr->regs->msr & MSR_PR) != 1 )) {
-		printk("Aborting reclaim at kernel task (%lx)\n", thr->regs->msr);
-		return 0;
-	}
-
-
 	giveup_all(container_of(thr, struct task_struct, thread));
 
 	tm_reclaim(thr, cause);
