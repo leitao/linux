@@ -65,7 +65,7 @@ exception_marker:
 system_call_common:
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 BEGIN_FTR_SECTION
-	extrdi.	r10, r12, 1, (63-MSR_TS_T_LG) /* transaction active? */
+	extrdi.	r10, r12, 1, (63-MSR_TS_T_LG) /* transactional state */
 	bne	.Ltabort_syscall
 END_FTR_SECTION_IFSET(CPU_FTR_TM)
 #endif
@@ -446,6 +446,8 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	mtmsrd	r10, 1
 	mtspr	SPRN_SRR0, r11
 	mtspr	SPRN_SRR1, r12
+
+	/* No need to recheckpoint here, since reclaim didn't happen */
 	RFI_TO_USER
 	b	.	/* prevent speculative execution */
 #endif
