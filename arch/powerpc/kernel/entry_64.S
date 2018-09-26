@@ -269,6 +269,15 @@ system_call_exit:
 	li	r10,MSR_RI
 	mtmsrd	r10,1		/* Restore RI */
 #endif
+	ld	r9,TI_FLAGS(r12)
+	andi.   r0,r9,_TIF_RESTORE_TM
+	beq     22f
+	ld      r4,_MSR(r1)     /* TODO: MSR[!PR] shouldn't be here */
+	andi.   r0,r4,MSR_PR
+	beq     22f  /* Skip if Kernel thread */
+	addi    r3,r1,STACK_FRAME_OVERHEAD
+	bl	restore_tm_state
+22:
 	bl	restore_math
 #ifdef CONFIG_PPC_BOOK3S
 	li	r11,0
