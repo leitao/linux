@@ -111,7 +111,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_P9_TM_HV_ASSIST)
 	li	r5, MSR_RI
 	mtmsrd	r5, 1
 
-	/* Save away checkpinted SPRs. */
+	/* Save away checkpointed SPRs. */
 	std	r31, VCPU_PPR_TM(r9)
 	std	r30, VCPU_DSCR_TM(r9)
 	mflr	r5
