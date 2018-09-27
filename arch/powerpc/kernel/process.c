@@ -946,6 +946,14 @@ void tm_recheckpoint(struct thread_struct *thread)
 	local_irq_restore(flags);
 }
 
+static void tm_change_failure_cause(struct task_struct *task, uint8_t cause)
+{
+        /* Clear the cause first */
+        task->thread.tm_texasr &= ~TEXASR_FC;
+        task->thread.tm_texasr |= (unsigned long) cause << TEXASR_FC_LG;
+}
+
+
 static inline void __switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
@@ -991,6 +999,12 @@ static inline void __switch_to_tm(struct task_struct *prev,
 			if (WARN_ON(MSR_TM_ACTIVE(mfmsr()))) {
 				tm_reclaim_current(TM_CAUSE_RESCHED);
 			}
+
+			/*
+			 * If rescheduled with TM active, update the
+			 * failure cause
+			 */
+			tm_change_failure_cause(prev, TM_CAUSE_RESCHED);
 		} else {
 			/*
 			 * TM enabled but not transactional. Just disable TM
