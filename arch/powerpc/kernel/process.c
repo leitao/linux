@@ -1000,11 +1000,7 @@ static inline void __switch_to_tm(struct task_struct *prev,
 			 * SCHEDULE_USER was called and here we are.
 			 *
 			 */
-			if (MSR_TM_ACTIVE(mfmsr())) {
-				/*
-				 * This is the only other case other than
-				 * TM_KERNEL_ENTRY that does a TM reclaim
-				 */
+			if (WARN_ON(MSR_TM_ACTIVE(mfmsr()))) {
 				tm_reclaim_current(TM_CAUSE_RESCHED);
 			}
 
