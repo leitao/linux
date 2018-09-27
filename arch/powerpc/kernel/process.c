@@ -954,7 +954,7 @@ static void tm_change_failure_cause(struct task_struct *task, uint8_t cause)
 }
 
 
-static inline void __switch_to_tm(struct task_struct *prev,
+static inline void switch_to_tm(struct task_struct *prev,
 		struct task_struct *new)
 {
 	if (!cpu_has_feature(CPU_FTR_TM))
@@ -1085,7 +1085,7 @@ void restore_tm_state(struct pt_regs *regs)
 }
 
 #else
-#define __switch_to_tm(prev, new)
+#define switch_to_tm(prev, new)
 #endif /* CONFIG_PPC_TRANSACTIONAL_MEM */
 
 static inline void save_sprs(struct thread_struct *t)
@@ -1210,7 +1210,7 @@ struct task_struct *__switch_to(struct task_struct *prev,
 	/* Save FPU, Altivec, VSX and SPE state */
 	giveup_all(prev);
 
-	__switch_to_tm(prev, new);
+	switch_to_tm(prev, new);
 
 	if (!radix_enabled()) {
 		/*
@@ -1569,7 +1569,7 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 {
 	flush_all_to_thread(src);
 	/*
-	 * Flush TM state out so we can copy it.  __switch_to_tm() does this
+	 * Flush TM state out so we can copy it.  switch_to_tm() does this
 	 * flush but it removes the checkpointed state from the current CPU and
 	 * transitions the CPU out of TM mode.  Hence we need to make sure
 	 * TIF_RESTORE_TM is set so restore_tm_state is called to restore the
@@ -1578,7 +1578,7 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 	 * Can't pass dst because it isn't ready. Doesn't matter, passing
 	 * dst is only important for __switch_to()
 	 */
-	__switch_to_tm(src, src);
+	switch_to_tm(src, src);
 
 	*dst = *src;
 
