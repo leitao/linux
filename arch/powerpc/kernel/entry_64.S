@@ -931,9 +931,6 @@ ALT_FTR_SECTION_END_IFCLR(CPU_FTR_STCX_CHECKS_ADDRESS)
 	 */
 	.globl	fast_exception_return
 fast_exception_return:
-	/* hard disable */
-	li	r4,MSR_RI
-	mtmsrd	r4,1
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	CURRENT_THREAD_INFO(r4, r1)
