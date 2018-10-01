@@ -1752,11 +1752,10 @@ void start_thread(struct pt_regs *regs, unsigned long start, unsigned long sp)
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	/*
-	 * Clear any transactional state, we're exec()ing. The cause is
-	 * not important as there will never be a recheckpoint so it's not
-	 * user visible.
+	 * It is a bug if the transaction was not reclaimed until this
+	 * point. Warn us and try to workaround it calling tm_reclaim().
 	 */
-	if (MSR_TM_SUSPENDED(mfmsr()))
+	if (WARN_ON(MSR_TM_SUSPENDED(mfmsr())))
 		tm_reclaim_current(0);
 #endif
 
