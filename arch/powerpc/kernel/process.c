@@ -862,11 +862,6 @@ static inline bool hw_brk_match(struct arch_hw_breakpoint *a,
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 
-static inline bool tm_enabled(struct task_struct *tsk)
-{
-	return tsk && tsk->thread.regs && (tsk->thread.regs->msr & MSR_TM);
-}
-
 static void tm_reclaim_thread(struct thread_struct *thr, uint8_t cause)
 {
 	/*

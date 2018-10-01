@@ -64,7 +64,6 @@
 #include <asm/rio.h>
 #include <asm/fadump.h>
 #include <asm/switch_to.h>
-#include <asm/tm.h>
 #include <asm/debug.h>
 #include <asm/asm-prototypes.h>
 #include <asm/hmi.h>
@@ -1276,9 +1275,11 @@ static int emulate_instruction(struct pt_regs *regs)
 
 	/* Emulate load/store string insn. */
 	if ((instword & PPC_INST_STRING_GEN_MASK) == PPC_INST_STRING) {
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 		if (tm_abort_check(regs,
 				   TM_CAUSE_EMULATE | TM_CAUSE_PERSISTENT))
 			return -EINVAL;
+#endif
 		PPC_WARN_EMULATED(string, regs);
 		return emulate_string_inst(regs, instword);
 	}
@@ -1508,8 +1509,10 @@ void alignment_exception(struct pt_regs *regs)
 	if (!arch_irq_disabled_regs(regs))
 		local_irq_enable();
 
+#ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	if (tm_abort_check(regs, TM_CAUSE_ALIGNMENT | TM_CAUSE_PERSISTENT))
 		goto bail;
+#endif
 
 	/* we don't implement logging of alignment exceptions */
 	if (!(current->thread.align_ctl & PR_UNALIGN_SIGBUS))
