@@ -579,6 +579,8 @@ static long restore_tm_sigcontexts(struct task_struct *tsk,
 		}
 	}
 #endif
+	/* Make sure the transaction is marked as failed */
+	tsk->thread.tm_texasr |= TEXASR_FS;
 	/* Guarantee that restore_tm_state() will be called */
 	set_thread_flag(TIF_RESTORE_TM);
 

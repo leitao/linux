@@ -851,6 +851,8 @@ static long restore_tm_user_regs(struct pt_regs *regs,
 	/* Pull in the MSR TM bits from the user context */
 	regs->msr = (regs->msr & ~MSR_TS_MASK) | (msr_hi & MSR_TS_MASK);
 
+	/* Make sure the transaction is marked as failed */
+	current->thread.tm_texasr |= TEXASR_FS;
 	/* Make sure restore_tm_state will be called */
 	set_thread_flag(TIF_RESTORE_TM);
 
