@@ -1012,10 +1012,8 @@ static inline void switch_to_tm(struct task_struct *prev,
 			 * that disables the TM and reenables the laziness
 			 * save/restore
 			 */
-			if (prev->thread.load_tm == 0) {
-				prev->thread.regs->msr &= ~(MSR_TM|MSR_TS_MASK);
-				clear_thread_flag(TIF_RESTORE_TM);
-			}
+			if (prev->thread.load_tm == 0)
+				prev->thread.regs->msr &= ~MSR_TM;
 		}
 	}
 
@@ -1064,8 +1062,6 @@ void restore_tm_state(struct pt_regs *regs)
 	 * saved and therefore incorrect signal contexts.
 	 */
 	clear_thread_flag(TIF_RESTORE_TM);
-	if (regs->msr & MSR_TM == 0)
-		return;
 	if (!MSR_TM_ACTIVE(regs->msr))
 		return;
 
