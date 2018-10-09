@@ -478,8 +478,18 @@ static long restore_tm_sigcontexts(struct task_struct *tsk,
 	 * happened whilst in the signal handler and load_tm overflowed,
 	 * disabling the TM bit. In either case we can end up with an illegal
 	 * TM state leading to a TM Bad Thing when we return to userspace.
+	 *
+	 * Every time MSR_TM is enabled, mainly for the b) case, the TM SPRs
+	 * must be restored in the live registers, since the live registers
+	 * could contain garbage and later we want to read from live, since
+	 * MSR_TM is enabled, and MSR[TM] is what is used to check if the
+	 * TM SPRs live registers are valid or not.
 	 */
-	regs->msr |= MSR_TM;
+	if ((regs->msr & MSR_TM) == 0) {
+		regs->msr |= MSR_TM;
+		tm_enable();
+		tm_restore_sprs(&tsk->thread);
+	}
 
 	/* pull in MSR LE from user context */
 	regs->msr = (regs->msr & ~MSR_LE) | (msr & MSR_LE);
