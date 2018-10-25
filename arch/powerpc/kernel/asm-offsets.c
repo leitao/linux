@@ -109,6 +109,9 @@ int main(void)
 	OFFSET(THREAD_FPSAVEAREA, thread_struct, fp_save_area);
 	OFFSET(FPSTATE_FPSCR, thread_fp_state, fpscr);
 	OFFSET(THREAD_LOAD_FP, thread_struct, load_fp);
+	OFFSET(THREAD_DSCR, thread_struct, dscr);
+	OFFSET(THREAD_TAR, thread_struct, tar);
+
 #ifdef CONFIG_ALTIVEC
 	OFFSET(THREAD_VRSTATE, thread_struct, vr_state.vr);
 	OFFSET(THREAD_VRSAVEAREA, thread_struct, vr_save_area);
@@ -311,6 +314,7 @@ int main(void)
 	STACK_PT_REGS_OFFSET(ORIG_GPR3, orig_gpr3);
 	STACK_PT_REGS_OFFSET(RESULT, result);
 	STACK_PT_REGS_OFFSET(_TRAP, trap);
+	STACK_PT_REGS_OFFSET(_PPR, ppr);
 #ifndef CONFIG_PPC64
 	/*
 	 * The PowerPC 400-class & Book-E processors have neither the DAR

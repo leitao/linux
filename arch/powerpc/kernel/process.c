@@ -79,6 +79,9 @@
 #endif
 
 extern unsigned long _get_SP(void);
+static inline void save_sprs(struct thread_struct *t);
+static inline void restore_sprs_after_recheckpoint(struct thread_struct
+						   *thread);
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 /*
@@ -883,6 +886,8 @@ static void tm_reclaim_thread(struct thread_struct *thr, uint8_t cause)
 		thr->regs->msr);
 	giveup_all(container_of(thr, struct task_struct, thread));
 
+	/* Save SPRS before reclaim */
+	save_sprs(thr);
 	tm_reclaim(thr, cause);
 
 	/* Tag it so restore_tm_state will pay attention to this task */
@@ -939,6 +944,7 @@ void tm_recheckpoint(struct thread_struct *thread)
 
 	__tm_recheckpoint(thread);
 
+	restore_sprs_after_recheckpoint(thread);
 	local_irq_restore(flags);
 }
 
@@ -1164,6 +1170,19 @@ static inline void restore_sprs(struct thread_struct *old_thread,
 #endif
 
 	thread_pkey_regs_restore(new_thread, old_thread);
+}
+
+static inline void restore_sprs_after_recheckpoint(struct thread_struct *thread)
+{
+#ifdef CONFIG_PPC_BOOK3S_64
+	if (cpu_has_feature(CPU_FTR_DSCR))
+		mtspr(SPRN_DSCR, thread->dscr);
+
+	if (cpu_has_feature(CPU_FTR_ARCH_207S)) {
+		mtspr(SPRN_TAR, thread->tar);
+		mtspr(SPRN_FSCR, thread->fscr);
+	}
+#endif
 }
 
 #ifdef CONFIG_PPC_BOOK3S_64
