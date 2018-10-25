@@ -306,9 +306,18 @@ _GLOBAL(tm_reclaim)
 	mtlr	r0
 	ld	r2, STK_GOT(r1)
 
-	/* Load CPU's default DSCR */
-	ld	r0, PACA_DSCR_DEFAULT(r13)
-	mtspr	SPRN_DSCR, r0
+	/*
+	 * Load transactional SPRs, as all other registers have the
+	 * transacional value, which will be seen by save_sprs and so
+	 * forth. Checkpointed SPRs are in the thread->tm_tar/dscr.
+	 */
+	ld      r0, THREAD_DSCR(r12)
+	mtspr   SPRN_DSCR, r0
+	ld      r0, THREAD_TAR(r12)
+	mtspr   SPRN_TAR, r0
+	ld      r0, THREAD_PPR(r12)
+	mtspr   SPRN_PPR, r0
+
 
 	blr
 
@@ -492,10 +501,6 @@ restore_gprs:
 	mtcr	r4
 	mtlr	r0
 	ld	r2, STK_GOT(r1)
-
-	/* Load CPU's default DSCR */
-	ld	r0, PACA_DSCR_DEFAULT(r13)
-	mtspr	SPRN_DSCR, r0
 
 	blr
 
