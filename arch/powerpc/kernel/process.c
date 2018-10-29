@@ -889,6 +889,8 @@ static void tm_reclaim_thread(struct thread_struct *thr, uint8_t cause)
 	if (!MSR_TM_SUSPENDED(mfmsr()))
 		return;
 
+	TM_DEBUG("TM reclaim thread at 0x%lx, MSR=%lx\n", thr->regs->nip,
+		thr->regs->msr);
 	giveup_all(container_of(thr, struct task_struct, thread));
 
 	/* Save SPRS before reclaim */
@@ -933,6 +935,8 @@ void tm_recheckpoint(struct thread_struct *thread)
 	if (!(thread->regs->msr & MSR_TM))
 		return;
 
+	TM_DEBUG("TM recheckpoint at 0x%lx, MSR=%lx\n", thread->regs->nip,
+		thread->regs->msr);
 	/* We really can't be interrupted here as the TEXASR registers can't
 	 * change and later in the trecheckpoint code, we have a userspace R1.
 	 * So let's hard disable over this region.
@@ -1017,8 +1021,10 @@ static inline void switch_to_tm(struct task_struct *prev,
 			 * that disables the TM and reenables the laziness
 			 * save/restore
 			 */
-			if (prev->thread.load_tm == 0)
+			if (prev->thread.load_tm == 0) {
 				prev->thread.regs->msr &= ~MSR_TM;
+					TM_DEBUG("Disabling TM facility for process %s (%lx)\n", prev->comm, prev->pid);
+			}
 		}
 	}
 
@@ -1070,6 +1076,7 @@ void restore_tm_state(struct pt_regs *regs)
 	if (!MSR_TM_ACTIVE(regs->msr))
 		return;
 
+	TM_DEBUG("Restore TM state at 0x%lx, MSR=%lx\n", regs->nip, regs->msr);
 	tm_enable();
 	/* The only place we recheckpoint */
 	tm_recheckpoint(&current->thread);
