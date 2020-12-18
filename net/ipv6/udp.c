@@ -1755,6 +1755,7 @@ struct proto udpv6_prot = {
 	.disconnect		= udp_disconnect,
 	.ioctl			= udp_ioctl,
 	.init			= udpv6_init_sock,
+	.uring_cmd		= udp_uring_cmd,
 	.destroy		= udpv6_destroy_sock,
 	.setsockopt		= udpv6_setsockopt,
 	.getsockopt		= udpv6_getsockopt,
