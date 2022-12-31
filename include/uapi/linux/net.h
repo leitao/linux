@@ -59,6 +59,8 @@ typedef enum {
 enum {
 	SOCKET_URING_OP_SIOCINQ		= 0,
 	SOCKET_URING_OP_SIOCOUTQ,
+	SOCKET_URING_OP_SETSOCKOPT,
+	SOCKET_URING_OP_GETSOCKOPT,
 
 	/*
 	 * This is reserved for custom sub protocol
@@ -70,6 +72,16 @@ struct sock_uring_cmd {
 	__u16	op;
 	__u16	unused[3];
 	__u64	unused2[4];
+};
+
+struct sock_uring_opt_cmd {
+	__u16	op;
+	__u16	unused[3];
+	__u32	level;
+	__u32	unused2[1];
+	__u64	optname;
+	__u64	optval;
+	__u64	optlen;
 };
 
 #endif /* _UAPI_LINUX_NET_H */

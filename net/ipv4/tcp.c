@@ -597,6 +597,29 @@ __poll_t tcp_poll(struct file *file, struct socket *sock, poll_table *wait)
 }
 EXPORT_SYMBOL(tcp_poll);
 
+static int tcp_uring_getsockopt(struct sock *sk, struct io_uring_cmd *cmd,
+				unsigned int issue_flags)
+{
+	struct sock_uring_opt_cmd *scmd = (struct sock_uring_opt_cmd *)&cmd->pdu;
+	int __user *optlen;
+
+	optlen = u64_to_user_ptr(scmd->optlen);
+	return tcp_getsockopt(sk, scmd->level, scmd->optname,
+				u64_to_user_ptr(scmd->optval), optlen);
+}
+
+static int tcp_uring_setsockopt(struct sock *sk, struct io_uring_cmd *cmd,
+				unsigned int issue_flags)
+{
+	struct sock_uring_opt_cmd *scmd = (struct sock_uring_opt_cmd *)&cmd->pdu;
+	sockptr_t optval;
+
+	optval.user = u64_to_user_ptr(scmd->optval);
+	optval.is_kernel = 0;
+	return tcp_setsockopt(sk, scmd->level, scmd->optname, optval,
+				scmd->optlen);
+}
+
 int tcp_uring_cmd(struct sock *sk, struct io_uring_cmd *cmd,
 		  unsigned int issue_flags)
 {
@@ -623,6 +646,10 @@ int tcp_uring_cmd(struct sock *sk, struct io_uring_cmd *cmd,
 		else
 			ret = READ_ONCE(tp->write_seq) - tp->snd_una;
 		break;
+	case SOCKET_URING_OP_SETSOCKOPT:
+		return tcp_uring_setsockopt(sk, cmd, issue_flags);
+	case SOCKET_URING_OP_GETSOCKOPT:
+		return tcp_uring_getsockopt(sk, cmd, issue_flags);
 	default:
 		ret = -EOPNOTSUPP;
 		break;

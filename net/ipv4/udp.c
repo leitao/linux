@@ -1712,6 +1712,29 @@ static int first_packet_length(struct sock *sk)
 	return res;
 }
 
+static int udp_uring_getsockopt(struct sock *sk, struct io_uring_cmd *cmd,
+				unsigned int issue_flags)
+{
+	struct sock_uring_opt_cmd *scmd = (struct sock_uring_opt_cmd *)&cmd->pdu;
+	int __user *optlen;
+
+	optlen = u64_to_user_ptr(scmd->optlen);
+	return udp_getsockopt(sk, scmd->level, scmd->optname,
+				u64_to_user_ptr(scmd->optval), optlen);
+}
+
+static int udp_uring_setsockopt(struct sock *sk, struct io_uring_cmd *cmd,
+				unsigned int issue_flags)
+{
+	struct sock_uring_opt_cmd *scmd = (struct sock_uring_opt_cmd *)&cmd->pdu;
+	sockptr_t optval;
+
+	optval.user = u64_to_user_ptr(scmd->optval);
+	optval.is_kernel = 0;
+	return udp_setsockopt(sk, scmd->level, scmd->optname, optval,
+				scmd->optlen);
+}
+
 int udp_uring_cmd(struct sock *sk, struct io_uring_cmd *cmd,
 		  unsigned int issue_flags)
 {
@@ -1722,6 +1745,10 @@ int udp_uring_cmd(struct sock *sk, struct io_uring_cmd *cmd,
 		return max_t(int, 0, first_packet_length(sk));
 	case SOCKET_URING_OP_SIOCOUTQ:
 		return sk_wmem_alloc_get(sk);
+	case SOCKET_URING_OP_SETSOCKOPT:
+		return udp_uring_setsockopt(sk, cmd, issue_flags);
+	case SOCKET_URING_OP_GETSOCKOPT:
+		return udp_uring_getsockopt(sk, cmd, issue_flags);
 	default:
 		return -EOPNOTSUPP;
 	}

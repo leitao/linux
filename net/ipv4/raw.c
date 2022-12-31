@@ -858,6 +858,29 @@ static int raw_getsockopt(struct sock *sk, int level, int optname,
 	return do_raw_getsockopt(sk, level, optname, optval, optlen);
 }
 
+static int raw_uring_getsockopt(struct sock *sk, struct io_uring_cmd *cmd,
+				unsigned int issue_flags)
+{
+	struct sock_uring_opt_cmd *scmd = (struct sock_uring_opt_cmd *)&cmd->pdu;
+	int __user *optlen;
+
+	optlen = u64_to_user_ptr(scmd->optlen);
+	return raw_getsockopt(sk, scmd->level, scmd->optname,
+				u64_to_user_ptr(scmd->optval), optlen);
+}
+
+static int raw_uring_setsockopt(struct sock *sk, struct io_uring_cmd *cmd,
+				unsigned int issue_flags)
+{
+	struct sock_uring_opt_cmd *scmd = (struct sock_uring_opt_cmd *)&cmd->pdu;
+	sockptr_t optval;
+
+	optval.user = u64_to_user_ptr(scmd->optval);
+	optval.is_kernel = 0;
+	return raw_setsockopt(sk, scmd->level, scmd->optname, optval,
+				scmd->optlen);
+}
+
 int raw_uring_cmd(struct sock *sk, struct io_uring_cmd *cmd,
 		  unsigned int issue_flags)
 {
@@ -877,6 +900,10 @@ int raw_uring_cmd(struct sock *sk, struct io_uring_cmd *cmd,
 		spin_unlock_bh(&sk->sk_receive_queue.lock);
 		return amount;
 		}
+	case SOCKET_URING_OP_SETSOCKOPT:
+		return raw_uring_setsockopt(sk, cmd, issue_flags);
+	case SOCKET_URING_OP_GETSOCKOPT:
+		return raw_uring_getsockopt(sk, cmd, issue_flags);
 	default:
 		return -EOPNOTSUPP;
 	}
