@@ -2766,6 +2766,15 @@ static void io_req_caches_free(struct io_ring_ctx *ctx)
 	mutex_unlock(&ctx->uring_lock);
 }
 
+static __cold void io_uring_acache_free(struct io_ring_ctx *ctx)
+{
+
+	io_alloc_cache_free(&ctx->apoll_cache, io_apoll_cache_free,
+			    sizeof(struct async_poll));
+	io_alloc_cache_free(&ctx->netmsg_cache, io_netmsg_cache_free,
+			    sizeof(struct io_async_msghdr));
+}
+
 static __cold void io_ring_ctx_free(struct io_ring_ctx *ctx)
 {
 	io_sq_thread_finish(ctx);
@@ -2781,8 +2790,7 @@ static __cold void io_ring_ctx_free(struct io_ring_ctx *ctx)
 		__io_sqe_files_unregister(ctx);
 	io_cqring_overflow_kill(ctx);
 	io_eventfd_unregister(ctx);
-	io_alloc_cache_free(&ctx->apoll_cache, io_apoll_cache_free);
-	io_alloc_cache_free(&ctx->netmsg_cache, io_netmsg_cache_free);
+	io_uring_acache_free(ctx);
 	mutex_unlock(&ctx->uring_lock);
 	io_destroy_buffers(ctx);
 	if (ctx->sq_creds)
