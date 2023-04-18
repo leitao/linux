@@ -1592,6 +1592,43 @@ int ip_mroute_getsockopt(struct sock *sk, int optname, sockptr_t optval,
 	return 0;
 }
 
+int sock_skprot_ioctl_ipmr(struct sock *sk, unsigned int cmd,
+			   unsigned long arg)
+{
+	void __user *ptr = (void __user *)arg;
+	int ret;
+
+	/* This is a special case where ipmr_ioctl will be called */
+	switch (cmd) {
+	case SIOCGETVIFCNT: {
+		struct sioc_vif_req vr;
+
+		if (copy_from_user(&vr, ptr, sizeof(vr)))
+			return -EFAULT;
+		ret = ipmr_ioctl(sk, cmd, &vr);
+		if (ret)
+			return ret;
+		if (copy_to_user(ptr, &vr, sizeof(vr)))
+			return -EFAULT;
+		return 0;
+		}
+	case SIOCGETSGCNT: {
+		struct sioc_sg_req sr;
+
+		if (copy_from_user(&sr, ptr, sizeof(sr)))
+			return -EFAULT;
+		ret = ipmr_ioctl(sk, cmd, &sr);
+		if (ret)
+			return ret;
+		if (copy_to_user(ptr, &sr, sizeof(sr)))
+			return -EFAULT;
+		return 0;
+		}
+	default:
+		return -ENOIOCTLCMD;
+	}
+}
+
 /* The IP multicast ioctl support routines. */
 int ipmr_ioctl(struct sock *sk, int cmd, void __user *arg)
 {

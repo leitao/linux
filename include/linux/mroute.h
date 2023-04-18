@@ -21,6 +21,7 @@ int ip_mroute_getsockopt(struct sock *, int, sockptr_t, sockptr_t);
 int ipmr_ioctl(struct sock *sk, int cmd, void __user *arg);
 int ipmr_compat_ioctl(struct sock *sk, unsigned int cmd, void __user *arg);
 int ip_mr_init(void);
+int sock_skprot_ioctl_ipmr(struct sock *sk, unsigned int cmd, unsigned long arg);
 bool ipmr_rule_default(const struct fib_rule *rule);
 #else
 static inline int ip_mroute_setsockopt(struct sock *sock, int optname,
