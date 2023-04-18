@@ -978,7 +978,7 @@ int inet_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		break;
 	default:
 		if (sk->sk_prot->ioctl)
-			err = sk->sk_prot->ioctl(sk, cmd, arg);
+			err = sock_skprot_ioctl(sk, cmd, arg);
 		else
 			err = -ENOIOCTLCMD;
 		break;
