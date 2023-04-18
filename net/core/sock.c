@@ -114,6 +114,8 @@
 #include <linux/memcontrol.h>
 #include <linux/prefetch.h>
 #include <linux/compat.h>
+#include <linux/mroute.h>
+#include <linux/mroute6.h>
 
 #include <linux/uaccess.h>
 
@@ -135,6 +137,7 @@
 #include <net/bpf_sk_storage.h>
 
 #include <trace/events/sock.h>
+#include <uapi/asm-generic/ioctls.h>
 
 #include <net/tcp.h>
 #include <net/busy_poll.h>
@@ -4111,3 +4114,33 @@ int sock_bind_add(struct sock *sk, struct sockaddr *addr, int addr_len)
 	return sk->sk_prot->bind_add(sk, addr, addr_len);
 }
 EXPORT_SYMBOL(sock_bind_add);
+
+/* This function basically calls ioctl and populates userspace buffers */
+int sock_skprot_ioctl(struct sock *sk, unsigned int cmd,
+		      unsigned long arg)
+{
+	int ret, karg;
+
+	/* Raw/Raw6 sockets use "arg" in different ways */
+	if (!strcmp(sk->sk_prot->name, "RAW")) {
+		if (cmd != SIOCOUTQ && cmd != SIOCINQ) {
+#ifdef CONFIG_IP_MROUTE
+			return sock_skprot_ioctl_ipmr(sk, cmd, arg);
+#endif
+		}
+	} else if (!strcmp(sk->sk_prot->name, "RAW6")) {
+		if (cmd != SIOCOUTQ && cmd != SIOCINQ) {
+#ifdef CONFIG_IPV6_MROUTE
+			return sock_skprot_ioctl_ip6mr(sk, cmd, arg);
+#endif
+		}
+	}
+
+	 /* This is a regular ioctl, and the result an int that should be
+	 * copied to userspace */
+	ret = sk->sk_prot->ioctl(sk, cmd, &karg);
+	if (ret)
+		return ret;
+
+	return put_user(karg, (int __user *)arg);
+}
