@@ -1880,6 +1880,45 @@ int ip6_mroute_getsockopt(struct sock *sk, int optname, sockptr_t optval,
  *	The IP multicast ioctl support routines.
  */
 
+int sock_skprot_ioctl_ip6mr(struct sock *sk, unsigned int cmd,
+			    unsigned long arg)
+{
+	void __user *ptr = (void __user *)arg;
+	int ret;
+
+	/* This is a special case where ipmr_ioctl will be called */
+	switch (cmd) {
+	case SIOCGETMIFCNT_IN6: {
+		/* Copy struct sioc_mif_req6 to kernel to use as na input,
+		 * and return the same structure as ioctl return */
+		struct sioc_mif_req6 vr;
+
+		if (copy_from_user(&vr, ptr, sizeof(vr)))
+			return -EFAULT;
+		ret = ip6mr_ioctl(sk, cmd, &vr);
+		if (ret)
+			return ret;
+		if (copy_to_user(ptr, &vr, sizeof(vr)))
+			return -EFAULT;
+		return 0;
+		}
+	case SIOCGETSGCNT_IN6: {
+		struct sioc_sg_req6 sr;
+
+		if (copy_from_user(&sr, ptr, sizeof(sr)))
+			return -EFAULT;
+		ret = ip6mr_ioctl(sk, cmd, &sr);
+		if (ret)
+			return ret;
+		if (copy_to_user(ptr, &sr, sizeof(sr)))
+			return -EFAULT;
+		return 0;
+		}
+	default:
+		return -ENOIOCTLCMD;
+	}
+}
+
 int ip6mr_ioctl(struct sock *sk, int cmd, void __user *arg)
 {
 	struct sioc_sg_req6 sr;

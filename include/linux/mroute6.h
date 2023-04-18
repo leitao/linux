@@ -33,6 +33,7 @@ extern int ip6mr_ioctl(struct sock *sk, int cmd, void __user *arg);
 extern int ip6mr_compat_ioctl(struct sock *sk, unsigned int cmd, void __user *arg);
 extern int ip6_mr_init(void);
 extern void ip6_mr_cleanup(void);
+extern int sock_skprot_ioctl_ip6mr(struct sock *sk, unsigned int cmd, unsigned long arg);
 #else
 static inline int ip6_mroute_setsockopt(struct sock *sock, int optname,
 		sockptr_t optval, unsigned int optlen)
