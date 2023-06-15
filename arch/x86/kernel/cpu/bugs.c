@@ -275,6 +275,7 @@ static void x86_amd_ssb_disable(void)
 /* Default mitigation for MDS-affected CPUs */
 static enum mds_mitigations mds_mitigation __ro_after_init = MDS_MITIGATION_FULL;
 static bool mds_nosmt __ro_after_init = false;
+#define MDS_WARN_MSG "WARNING: Microarchitectural Data Sampling (MDS) speculative mitigation disabled!\n"
 
 static const char * const mds_strings[] = {
 	[MDS_MITIGATION_OFF]	= "Vulnerable",
@@ -284,9 +285,14 @@ static const char * const mds_strings[] = {
 
 static void __init mds_select_mitigation(void)
 {
-	if (!boot_cpu_has_bug(X86_BUG_MDS) || cpu_speculative_mitigations_off()) {
+	if (!boot_cpu_has_bug(X86_BUG_MDS)) {
 		mds_mitigation = MDS_MITIGATION_OFF;
 		return;
+	}
+
+	if (cpu_speculative_mitigations_off()) {
+		pr_err(MDS_WARN_MSG);
+		mds_mitigation = MDS_MITIGATION_OFF;
 	}
 
 	if (mds_mitigation == MDS_MITIGATION_FULL) {
@@ -335,6 +341,7 @@ enum taa_mitigations {
 /* Default mitigation for TAA-affected CPUs */
 static enum taa_mitigations taa_mitigation __ro_after_init = TAA_MITIGATION_VERW;
 static bool taa_nosmt __ro_after_init;
+#define TAA_WARN_MSG "WARNING: TSX Asynchronous Abort (TAA) speculative mitigation disabled!\n"
 
 static const char * const taa_strings[] = {
 	[TAA_MITIGATION_OFF]		= "Vulnerable",
@@ -359,6 +366,7 @@ static void __init taa_select_mitigation(void)
 	}
 
 	if (cpu_speculative_mitigations_off()) {
+		pr_err(TAA_WARN_MSG);
 		taa_mitigation = TAA_MITIGATION_OFF;
 		return;
 	}
@@ -436,6 +444,7 @@ enum mmio_mitigations {
 /* Default mitigation for Processor MMIO Stale Data vulnerabilities */
 static enum mmio_mitigations mmio_mitigation __ro_after_init = MMIO_MITIGATION_VERW;
 static bool mmio_nosmt __ro_after_init = false;
+#define MMIO_WARN_MSG "WARNING: MMIO Stale Data speculative mitigation disabled!\n"
 
 static const char * const mmio_strings[] = {
 	[MMIO_MITIGATION_OFF]		= "Vulnerable",
@@ -448,10 +457,14 @@ static void __init mmio_select_mitigation(void)
 	u64 ia32_cap;
 
 	if (!boot_cpu_has_bug(X86_BUG_MMIO_STALE_DATA) ||
-	     boot_cpu_has_bug(X86_BUG_MMIO_UNKNOWN) ||
-	     cpu_speculative_mitigations_off()) {
+	     boot_cpu_has_bug(X86_BUG_MMIO_UNKNOWN)) {
 		mmio_mitigation = MMIO_MITIGATION_OFF;
 		return;
+	}
+
+	if (cpu_speculative_mitigations_off()) {
+		pr_err(MMIO_WARN_MSG);
+		mmio_mitigation = MMIO_MITIGATION_OFF;
 	}
 
 	if (mmio_mitigation == MMIO_MITIGATION_OFF)
