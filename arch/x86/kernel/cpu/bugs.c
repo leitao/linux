@@ -87,6 +87,12 @@ void update_spec_ctrl_cond(u64 val)
 		wrmsrl(MSR_IA32_SPEC_CTRL, val);
 }
 
+static inline bool cpu_speculative_mitigations_off(void)
+{
+	return cpu_mitigations_off() ||
+		!IS_ENABLED(CONFIG_SPECULATION_MITIGATIONS);
+}
+
 noinstr u64 spec_ctrl_current(void)
 {
 	return this_cpu_read(x86_spec_ctrl_current);
@@ -278,7 +284,7 @@ static const char * const mds_strings[] = {
 
 static void __init mds_select_mitigation(void)
 {
-	if (!boot_cpu_has_bug(X86_BUG_MDS) || cpu_mitigations_off()) {
+	if (!boot_cpu_has_bug(X86_BUG_MDS) || cpu_speculative_mitigations_off()) {
 		mds_mitigation = MDS_MITIGATION_OFF;
 		return;
 	}
@@ -352,7 +358,7 @@ static void __init taa_select_mitigation(void)
 		return;
 	}
 
-	if (cpu_mitigations_off()) {
+	if (cpu_speculative_mitigations_off()) {
 		taa_mitigation = TAA_MITIGATION_OFF;
 		return;
 	}
@@ -443,7 +449,7 @@ static void __init mmio_select_mitigation(void)
 
 	if (!boot_cpu_has_bug(X86_BUG_MMIO_STALE_DATA) ||
 	     boot_cpu_has_bug(X86_BUG_MMIO_UNKNOWN) ||
-	     cpu_mitigations_off()) {
+	     cpu_speculative_mitigations_off()) {
 		mmio_mitigation = MMIO_MITIGATION_OFF;
 		return;
 	}
@@ -516,7 +522,7 @@ early_param("mmio_stale_data", mmio_stale_data_parse_cmdline);
 
 static void __init md_clear_update_mitigation(void)
 {
-	if (cpu_mitigations_off())
+	if (cpu_speculative_mitigations_off())
 		return;
 
 	if (!static_key_enabled(&mds_user_clear))
