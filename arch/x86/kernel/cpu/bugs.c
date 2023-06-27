@@ -51,6 +51,7 @@ static void __init mmio_select_mitigation(void);
 static void __init srbds_select_mitigation(void);
 static void __init l1d_flush_select_mitigation(void);
 
+void print_them_all(void);
 /* The base value of the SPEC_CTRL MSR without task-specific bits set */
 u64 x86_spec_ctrl_base;
 EXPORT_SYMBOL_GPL(x86_spec_ctrl_base);
@@ -178,6 +179,8 @@ void __init check_bugs(void)
 	l1d_flush_select_mitigation();
 
 	arch_smt_update();
+
+	print_them_all();
 
 #ifdef CONFIG_X86_32
 	/*
@@ -2544,4 +2547,21 @@ ssize_t cpu_show_retbleed(struct device *dev, struct device_attribute *attr, cha
 {
 	return cpu_show_common(dev, attr, buf, X86_BUG_RETBLEED);
 }
+
 #endif
+void print_them_all(void)
+{
+	printk("spectre_v1_mitigation = %x\n", spectre_v1_mitigation);
+	printk("spectre_v2_enabled = %x\n", spectre_v2_enabled);
+	printk("retbleed_mitigation = %x\n", retbleed_mitigation);
+	printk("spectre_v2_user_ibpb = %x\n", spectre_v2_user_ibpb);
+	printk("spectre_v2_user_stibp = %x\n", spectre_v2_user_stibp);
+	printk("ssb_mode = %x\n", ssb_mode);
+	printk("l1tf_mitigation = %x\n", l1tf_mitigation);
+	printk("mds_mitigation = %x\n", mds_mitigation);
+	printk("taa_mitigation = %x\n", taa_mitigation);
+	printk("mmio_mitigation = %x\n", mmio_mitigation);
+	printk("srbds_mitigation = %x\n", srbds_mitigation);
+	printk("l1d_flush_mitigation = %x\n", l1d_flush_mitigation);
+}
+
