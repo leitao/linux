@@ -685,7 +685,7 @@ void __init_or_module noinline apply_retpolines(s32 *start, s32 *end)
 	}
 }
 
-#ifdef CONFIG_RETHUNK
+#ifdef CONFIG_MITIGATION_RETHUNK
 
 /*
  * Rewrite the compiler generated return thunk tail-calls.
@@ -758,7 +758,7 @@ void __init_or_module noinline apply_returns(s32 *start, s32 *end)
 }
 #else
 void __init_or_module noinline apply_returns(s32 *start, s32 *end) { }
-#endif /* CONFIG_RETHUNK */
+#endif /* CONFIG_MITIGATION_RETHUNK */
 
 #else /* !CONFIG_MITIGATION_RETPOLINE || !CONFIG_OBJTOOL */
 
