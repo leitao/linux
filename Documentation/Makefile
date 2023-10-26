@@ -97,7 +97,22 @@ quiet_cmd_sphinx = SPHINX  $@ --> file://$(abspath $(BUILDDIR)/$3/$4)
 		cp $(if $(patsubst /%,,$(DOCS_CSS)),$(abspath $(srctree)/$(DOCS_CSS)),$(DOCS_CSS)) $(BUILDDIR)/$3/_static/; \
 	fi
 
-htmldocs:
+YNL_TOOL:=tools/net/ynl/ynl-gen-rst.py
+YNL_YAML_DIR:=$(srctree)/Documentation/netlink/specs
+YNL_RST_DIR:=$(srctree)/Documentation/networking/netlink_spec
+YNL_INDEX:=$(srctree)/Documentation/networking/netlink_spec/index.rst
+
+YNL_YAML_FILES := $(wildcard $(YNL_YAML_DIR)/*.yaml)
+YNL_RST_FILES_TMP := $(patsubst %.yaml,%.rst,$(wildcard $(YNL_YAML_DIR)/*.yaml))
+YNL_RST_FILES := $(patsubst $(YNL_YAML_DIR)%,$(YNL_RST_DIR)%, $(YNL_RST_FILES_TMP))
+
+$(YNL_INDEX): $(YNL_RST_FILES)
+	$(YNL_TOOL) -x
+
+%.rst: $(YNL_YAMLS_FILES)
+	$(YNL_TOOL) -i $(patsubst %.rst,%.yaml, $(@F))
+
+htmldocs: $(YNL_INDEX)
 	@$(srctree)/scripts/sphinx-pre-install --version-check
 	@+$(foreach var,$(SPHINXDIRS),$(call loop_cmd,sphinx,html,$(var),,$(var)))
 
