@@ -296,6 +296,9 @@ def parse_yaml(obj: Dict[str, Any]) -> str:
 
     return "\n".join(lines)
 
+# Main functions
+# ==============
+
 
 def parse_arguments() -> argparse.Namespace:
     """Parse arguments from user"""
@@ -307,6 +310,8 @@ def parse_arguments() -> argparse.Namespace:
         "-o", "--output_dir", dest="output_dir", type=str, default=OUTPUT_PATH
     )
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-i", "--input", help="YAML file name")
+    parser.add_argument("-x", "--index", action="store_true", help="Generate the index page")
 
     args = parser.parse_args()
 
@@ -319,10 +324,6 @@ def parse_arguments() -> argparse.Namespace:
             sys.exit(-1)
 
     return args
-
-
-# Main functions
-# ==============
 
 
 def parse_yaml_file(filename: str) -> str:
@@ -342,7 +343,7 @@ def write_to_rstfile(content: str, filename: str) -> None:
         rst_file.write(content)
 
 
-def generate_main_index_rst(files: List[str], index_output: str) -> None:
+def generate_main_index_rst(index_dir: str) -> None:
     """Generate the `networking_spec/index` content and write to the file"""
     lines = []
 
@@ -350,10 +351,13 @@ def generate_main_index_rst(files: List[str], index_output: str) -> None:
     lines.append(rst_title("Netlink Specification"))
     lines.append(rst_toctree(1))
 
-    for filename in files:
-        lines.append(f"   {filename}\n")
+    for filename in os.listdir(index_dir):
+        if not filename.endswith(".rst") or filename == "index.rst":
+            continue
+        lines.append(f"   {filename.replace('.rst', '')}\n")
 
-    logging.debug("Writing an index file at %s for files: %s", index_output, files)
+    index_output = os.path.join(index_dir, "index.rst")
+    logging.debug("Writing an index file at %s", index_output)
     write_to_rstfile("".join(lines), index_output)
 
 
@@ -361,12 +365,9 @@ def main() -> None:
     """Main function that reads the YAML files and generates the RST files"""
 
     args = parse_arguments()
-    processed_files = []
 
-    for yaml_file in os.listdir(args.spec_dir):
-        if not yaml_file.endswith(".yaml"):
-            continue
-
+    if args.input:
+        yaml_file = args.input
         logging.debug("Parsing %s", yaml_file)
         try:
             content = parse_yaml_file(os.path.join(args.spec_dir, yaml_file))
@@ -374,14 +375,14 @@ def main() -> None:
             # Catch all exceptions and skip the file
             logging.warning("Failed to parse %s.", yaml_file)
             logging.warning(exception)
-            continue
+            sys.exit(-1)
 
         output = os.path.join(args.output_dir, yaml_file.replace(".yaml", ".rst"))
         write_to_rstfile(content, output)
-        processed_files.append(yaml_file.replace(".yaml", ""))
 
-    # Now generate the index for the index file referencing the auto generated files
-    generate_main_index_rst(processed_files, os.path.join(args.output_dir, "index.rst"))
+    if args.index:
+        # Generate the index RST file
+        generate_main_index_rst(args.output_dir)
 
 
 if __name__ == "__main__":
