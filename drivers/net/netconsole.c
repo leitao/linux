@@ -43,6 +43,7 @@ MODULE_DESCRIPTION("Console driver for network interfaces");
 MODULE_LICENSE("GPL");
 
 #define MAX_PARAM_LENGTH	256
+#define MAX_USERDATA		256
 #define MAX_PRINT_CHUNK		1000
 
 static char config[MAX_PARAM_LENGTH];
@@ -102,6 +103,7 @@ static struct console netconsole_ext;
 struct netconsole_target {
 	struct list_head	list;
 #ifdef	CONFIG_NETCONSOLE_DYNAMIC
+	char 			userdata[MAX_USERDATA];
 	struct config_item	item;
 #endif
 	bool			enabled;
@@ -585,6 +587,22 @@ out_unlock:
 	return -EINVAL;
 }
 
+static ssize_t userdata_show(struct config_item *item, char *buf)
+{
+	return sysfs_emit(buf, "%s\n", to_target(item)->userdata);
+}
+
+static ssize_t userdata_store(struct config_item *item, const char *buf,
+			      size_t count)
+{
+	struct netconsole_target *nt = to_target(item);
+
+	if (count > MAX_USERDATA)
+		return -1;
+
+	return strscpy(nt->userdata, buf, MAX_USERDATA);
+}
+
 CONFIGFS_ATTR(, enabled);
 CONFIGFS_ATTR(, extended);
 CONFIGFS_ATTR(, dev_name);
@@ -595,6 +613,7 @@ CONFIGFS_ATTR(, remote_ip);
 CONFIGFS_ATTR_RO(, local_mac);
 CONFIGFS_ATTR(, remote_mac);
 CONFIGFS_ATTR(, release);
+CONFIGFS_ATTR(, userdata);
 
 static struct configfs_attribute *netconsole_target_attrs[] = {
 	&attr_enabled,
@@ -607,6 +626,7 @@ static struct configfs_attribute *netconsole_target_attrs[] = {
 	&attr_remote_ip,
 	&attr_local_mac,
 	&attr_remote_mac,
+	&attr_userdata,
 	NULL,
 };
 
@@ -804,6 +824,38 @@ static struct notifier_block netconsole_netdev_notifier = {
 	.notifier_call  = netconsole_netdev_event,
 };
 
+
+static noinline unsigned int create_new_msg(struct netconsole_target *nt, char *newmsg,
+			 	   unsigned int newmsg_len, const char *msg, 
+				   unsigned int msg_len)
+{
+	const char *release, *userdata;
+	size_t userdata_len, release_len;
+	size_t idx = 0;
+
+	userdata = nt->userdata;
+	userdata_len = strlen(userdata);
+	/* Copy the prefix */
+	if (nt->release) {
+		release = init_utsname()->release;
+		release_len = strlen(release);
+		idx += scnprintf(newmsg, newmsg_len, "%s,", release);
+	}
+
+	if (WARN_ON_ONCE(userdata_len + release_len + msg_len > newmsg_len))
+		return 0;
+
+	/* Copy the main message */
+	strncat(newmsg + idx, msg, msg_len);
+
+	/* Append the userdata */
+	if (userdata_len) {
+		strncat(newmsg + idx, userdata, userdata_len);
+	}
+
+	return idx;
+}
+
 /**
  * send_ext_msg_udp - send extended log message to target
  * @nt: target to send message to
@@ -821,31 +873,37 @@ static void send_ext_msg_udp(struct netconsole_target *nt, const char *msg,
 	const char *header, *body;
 	int offset = 0;
 	int header_len, body_len;
-	const char *msg_ready = msg;
 	const char *release;
 	int release_len = 0;
+	const char *userdata;
+	int userdata_len = 0;
+	unsigned int newmsg_len;
+	char *newmsg;
 
 	if (nt->release) {
 		release = init_utsname()->release;
 		release_len = strlen(release) + 1;
 	}
 
-	if (msg_len + release_len <= MAX_PRINT_CHUNK) {
+	userdata = nt->userdata;
+	userdata_len = strlen(userdata);
+
+	newmsg_len = release_len + msg_len + userdata_len;
+	newmsg = kzalloc(newmsg_len, GFP_KERNEL);
+
+	create_new_msg(nt, newmsg, newmsg_len, msg, msg_len);
+
+	if (newmsg_len <= MAX_PRINT_CHUNK) {
 		/* No fragmentation needed */
-		if (nt->release) {
-			scnprintf(buf, MAX_PRINT_CHUNK, "%s,%s", release, msg);
-			msg_len += release_len;
-			msg_ready = buf;
-		}
-		netpoll_send_udp(&nt->np, msg_ready, msg_len);
+		netpoll_send_udp(&nt->np, newmsg, newmsg_len);
 		return;
 	}
 
 	/* need to insert extra header fields, detect header and body */
-	header = msg;
-	body = memchr(msg, ';', msg_len);
+	header = newmsg;
+	body = memchr(newmsg, ';', newmsg_len);
 	if (WARN_ON_ONCE(!body))
-		return;
+		goto out;
 
 	header_len = body - header;
 	body_len = msg_len - header_len - 1;
@@ -855,11 +913,6 @@ static void send_ext_msg_udp(struct netconsole_target *nt, const char *msg,
 	 * Transfer multiple chunks with the following extra header.
 	 * "ncfrag=<byte-offset>/<total-bytes>"
 	 */
-	if (nt->release)
-		scnprintf(buf, MAX_PRINT_CHUNK, "%s,", release);
-	memcpy(buf + release_len, header, header_len);
-	header_len += release_len;
-
 	while (offset < body_len) {
 		int this_header = header_len;
 		int this_chunk;
@@ -879,6 +932,9 @@ static void send_ext_msg_udp(struct netconsole_target *nt, const char *msg,
 
 		offset += this_chunk;
 	}
+
+out:
+	kfree(newmsg);
 }
 
 static void write_ext_msg(struct console *con, const char *msg,
