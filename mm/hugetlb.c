@@ -1685,10 +1685,9 @@ static void remove_hugetlb_folio(struct hstate *h, struct folio *folio,
 	__remove_hugetlb_folio(h, folio, adjust_surplus, false);
 }
 
-static void remove_hugetlb_folio_for_demote(struct hstate *h, struct folio *folio,
-							bool adjust_surplus)
+static void remove_hugetlb_folio_for_demote(struct hstate *h, struct folio *folio)
 {
-	__remove_hugetlb_folio(h, folio, adjust_surplus, true);
+	__remove_hugetlb_folio(h, folio, false, true);
 }
 
 static void add_hugetlb_folio(struct hstate *h, struct folio *folio,
@@ -3869,7 +3868,7 @@ static int demote_free_hugetlb_folio(struct hstate *h, struct folio *folio)
 
 	target_hstate = size_to_hstate(PAGE_SIZE << h->demote_order);
 
-	remove_hugetlb_folio_for_demote(h, folio, false);
+	remove_hugetlb_folio_for_demote(h, folio);
 	spin_unlock_irq(&hugetlb_lock);
 
 	/*
