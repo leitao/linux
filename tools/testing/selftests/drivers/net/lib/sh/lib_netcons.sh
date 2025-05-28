@@ -96,6 +96,8 @@ function set_network() {
 }
 
 function create_dynamic_target() {
+	local FORMAT="$1"
+
 	DSTMAC=$(ip netns exec "${NAMESPACE}" \
 		 ip link show "${DSTIF}" | awk '/ether/ {print $2}')
 
@@ -106,6 +108,18 @@ function create_dynamic_target() {
 	echo "${SRCIP}" > "${NETCONS_PATH}"/local_ip
 	echo "${DSTMAC}" > "${NETCONS_PATH}"/remote_mac
 	echo "${SRCIF}" > "${NETCONS_PATH}"/dev_name
+
+	if [ ${FORMAT} == "basic" ]
+	then
+		# Basic target does not support release
+		echo 0 > "${NETCONS_PATH}"/release
+		echo 0 > "${NETCONS_PATH}"/extended
+	fi
+
+	if [ ${FORMAT} == "extended" ]
+	then
+		echo 1 > "${NETCONS_PATH}"/extended
+	fi
 
 	echo 1 > "${NETCONS_PATH}"/enabled
 }
@@ -120,8 +134,9 @@ function disable_release_append() {
 function cleanup() {
 	local NSIM_DEV_SYS_DEL="/sys/bus/netdevsim/del_device"
 
+	echo "cleaning up"
 	# delete netconsole dynamic reconfiguration
-	echo 0 > "${NETCONS_PATH}"/enabled
+	echo 0 > "${NETCONS_PATH}"/enabled || true
 	# Remove all the keys that got created during the selftest
 	find "${NETCONS_PATH}/userdata/" -mindepth 1 -type d -delete
 	# Remove the configfs entry
@@ -160,6 +175,7 @@ function listen_port_and_save_to() {
 
 function validate_result() {
 	local TMPFILENAME="$1"
+	local TYPE="$2"
 
 	# TMPFILENAME will contain something like:
 	# 6.11.1-0_fbk0_rc13_509_g30d75cea12f7,13,1822,115075213798,-;netconsole selftest: netcons_gtJHM
@@ -177,16 +193,19 @@ function validate_result() {
 		exit "${ksft_fail}"
 	fi
 
-	if ! grep -q "${USERDATA_KEY}=${USERDATA_VALUE}" "${TMPFILENAME}"; then
-		echo "FAIL: ${USERDATA_KEY}=${USERDATA_VALUE} not found in ${TMPFILENAME}" >&2
-		cat "${TMPFILENAME}" >&2
-		exit "${ksft_fail}"
+	# userdata is not supported on basic format target
+	if [ "${TYPE}" != "basic" ];
+	then
+		if ! grep -q "${USERDATA_KEY}=${USERDATA_VALUE}" "${TMPFILENAME}"; then
+			echo "FAIL: ${USERDATA_KEY}=${USERDATA_VALUE} not found in ${TMPFILENAME}" >&2
+			cat "${TMPFILENAME}" >&2
+			exit "${ksft_fail}"
+		fi
 	fi
 
 	# Delete the file once it is validated, otherwise keep it
 	# for debugging purposes
 	rm "${TMPFILENAME}"
-	exit "${ksft_pass}"
 }
 
 function check_for_dependencies() {
