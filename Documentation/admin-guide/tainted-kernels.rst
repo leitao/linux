@@ -102,7 +102,8 @@ Bit  Log  Number  Reason that got the kernel tainted
  17  _/T  131072  kernel was built with the struct randomization plugin
  18  _/N  262144  an in-kernel test has been run
  19  _/J  524288  userspace used a mutating debug operation in fwctl
-===  ===  ======  ========================================================
+ 20  _/H 1048576  hardware failures identified
+===  === =======  ========================================================
 
 Note: The character ``_`` is representing a blank in this table to make reading
 easier.
@@ -189,3 +190,6 @@ More detailed explanation for tainting
  19) ``J`` if userpace opened /dev/fwctl/* and performed a FWTCL_RPC_DEBUG_WRITE
      to use the devices debugging features. Device debugging features could
      cause the device to malfunction in undefined ways.
+
+ 20) ``H`` if the kernel identified any hardware failure earlier during its operation.
+     That helps to correlate possible future issues to hardware being flaky.
