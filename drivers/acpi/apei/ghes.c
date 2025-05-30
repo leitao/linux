@@ -1106,6 +1106,7 @@ static void ghes_taint_hw_flaky(struct acpi_hest_generic_status *estatus)
 	 * hardware-related problems from software bugs during debugging.
 	 */
 	sev = ghes_severity(estatus->error_severity);
+	printk("SEV = %d\n", sev);
 	if (sev > GHES_SEV_NO)
 		add_taint(TAINT_FLAKY_HW, LOCKDEP_STILL_OK);
 }
@@ -1116,6 +1117,7 @@ static int ghes_proc(struct ghes *ghes)
 	u64 buf_paddr;
 	int rc;
 
+	printk("ghes_proc\n");
 	rc = ghes_read_estatus(ghes, estatus, &buf_paddr, FIX_APEI_GHES_IRQ);
 	if (rc)
 		goto out;
@@ -1156,6 +1158,7 @@ static void ghes_poll_func(struct timer_list *t)
 	struct ghes *ghes = from_timer(ghes, t, timer);
 	unsigned long flags;
 
+	printk("ghes_poll_func\n");
 	spin_lock_irqsave(&ghes_notify_lock_irq, flags);
 	ghes_proc(ghes);
 	spin_unlock_irqrestore(&ghes_notify_lock_irq, flags);
@@ -1169,6 +1172,7 @@ static irqreturn_t ghes_irq_func(int irq, void *data)
 	unsigned long flags;
 	int rc;
 
+	printk("ghes_irq_func\n");
 	spin_lock_irqsave(&ghes_notify_lock_irq, flags);
 	rc = ghes_proc(ghes);
 	spin_unlock_irqrestore(&ghes_notify_lock_irq, flags);
@@ -1185,6 +1189,7 @@ static int ghes_notify_hed(struct notifier_block *this, unsigned long event,
 	unsigned long flags;
 	int ret = NOTIFY_DONE;
 
+	printk("ghes_notify_hed\n");
 	spin_lock_irqsave(&ghes_notify_lock_irq, flags);
 	rcu_read_lock();
 	list_for_each_entry_rcu(ghes, &ghes_hed, list) {
@@ -1529,6 +1534,7 @@ static int ghes_probe(struct platform_device *ghes_dev)
 
 	int rc = -EINVAL;
 
+	printk("ghes_probe\n");
 	generic = *(struct acpi_hest_generic **)ghes_dev->dev.platform_data;
 	if (!generic->enabled)
 		return -ENODEV;
