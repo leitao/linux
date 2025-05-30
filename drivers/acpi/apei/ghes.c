@@ -1096,6 +1096,20 @@ static void __ghes_panic(struct ghes *ghes,
 	panic(msg);
 }
 
+static void ghes_taint_hw_flaky(struct acpi_hest_generic_status *estatus)
+{
+	int sev;
+
+	/*
+	 * GHES errors often indicate flaky hardware that could cause
+	 * intermittent system issues. Taint the kernel to help distinguish
+	 * hardware-related problems from software bugs during debugging.
+	 */
+	sev = ghes_severity(estatus->error_severity);
+	if (sev > GHES_SEV_NO)
+		add_taint(TAINT_FLAKY_HW, LOCKDEP_STILL_OK);
+}
+
 static int ghes_proc(struct ghes *ghes)
 {
 	struct acpi_hest_generic_status *estatus = ghes->estatus;
@@ -1114,6 +1128,7 @@ static int ghes_proc(struct ghes *ghes)
 			ghes_estatus_cache_add(ghes->generic, estatus);
 	}
 	ghes_do_proc(ghes, estatus);
+	ghes_taint_hw_flaky(estatus);
 
 out:
 	ghes_clear_estatus(ghes, estatus, buf_paddr, FIX_APEI_GHES_IRQ);
