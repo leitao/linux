@@ -93,14 +93,14 @@ static netdev_tx_t nsim_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		hrtimer_start(&rq->napi_timer, us_to_ktime(5), HRTIMER_MODE_REL);
 
 	rcu_read_unlock();
-	dev_dstats_tx_add(dev, len);
+	dev_stats_tx_add(dev, len);
 	return NETDEV_TX_OK;
 
 out_drop_free:
 	dev_kfree_skb(skb);
 out_drop_cnt:
 	rcu_read_unlock();
-	dev_dstats_tx_dropped(dev);
+	dev_stats_tx_dropped(dev);
 	return NETDEV_TX_OK;
 }
 
@@ -346,9 +346,9 @@ static int nsim_rcv(struct nsim_rq *rq, int budget)
 		skb_mark_napi_id(skb, &rq->napi);
 		ret = netif_receive_skb(skb);
 		if (ret == NET_RX_SUCCESS)
-			dev_dstats_rx_add(dev, skblen);
+			dev_stats_rx_add(dev, skblen);
 		else
-			dev_dstats_rx_dropped(dev);
+			dev_stats_rx_dropped(dev, 1);
 	}
 
 	return i;
@@ -636,7 +636,7 @@ static void nsim_queue_free(struct net_device *dev, struct nsim_rq *rq)
 {
 	hrtimer_cancel(&rq->napi_timer);
 	local_bh_disable();
-	dev_dstats_rx_dropped_add(dev, rq->skb_queue.qlen);
+	dev_stats_rx_dropped(dev, rq->skb_queue.qlen);
 	local_bh_enable();
 	skb_queue_purge_reason(&rq->skb_queue, SKB_DROP_REASON_QUEUE_PURGE);
 	kfree(rq);

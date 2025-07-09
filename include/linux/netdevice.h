@@ -3046,6 +3046,77 @@ static inline void dev_dstats_tx_dropped(struct net_device *dev)
 	u64_stats_update_end(&dstats->syncp);
 }
 
+static inline void dev_stats_tx_add(struct net_device *dev,
+				    unsigned int len)
+{
+	switch (dev->pcpu_stat_type) {
+	case NETDEV_PCPU_STAT_NONE:
+		break;
+	case NETDEV_PCPU_STAT_LSTATS:
+		dev_lstats_add(dev, len);
+		break;
+	case NETDEV_PCPU_STAT_TSTATS:
+		dev_sw_netstats_tx_add(dev, 1, len);
+		break;
+	case NETDEV_PCPU_STAT_DSTATS:
+		dev_dstats_tx_add(dev, len);
+		break;
+	}
+}
+
+static inline void dev_stats_rx_add(struct net_device *dev,
+				    unsigned int len)
+{
+	switch (dev->pcpu_stat_type) {
+	case NETDEV_PCPU_STAT_NONE:
+		break;
+	case NETDEV_PCPU_STAT_LSTATS:
+		/* no-op */
+		break;
+	case NETDEV_PCPU_STAT_TSTATS:
+		dev_sw_netstats_rx_add(dev, len);
+		break;
+	case NETDEV_PCPU_STAT_DSTATS:
+		dev_dstats_rx_add(dev, len);
+		break;
+	}
+}
+
+static inline void dev_stats_rx_dropped(struct net_device *dev,
+					unsigned int pkts)
+{
+	switch (dev->pcpu_stat_type) {
+	case NETDEV_PCPU_STAT_NONE:
+		break;
+	case NETDEV_PCPU_STAT_LSTATS:
+		/* no-op */
+		break;
+	case NETDEV_PCPU_STAT_TSTATS:
+		/* no-op */
+		break;
+	case NETDEV_PCPU_STAT_DSTATS:
+		dev_dstats_rx_dropped_add(dev, pkts);
+		break;
+	}
+}
+
+static inline void dev_stats_tx_dropped(struct net_device *dev)
+{
+	switch (dev->pcpu_stat_type) {
+	case NETDEV_PCPU_STAT_NONE:
+		break;
+	case NETDEV_PCPU_STAT_LSTATS:
+		/* no-op */
+		break;
+	case NETDEV_PCPU_STAT_TSTATS:
+		/* no-op */
+		break;
+	case NETDEV_PCPU_STAT_DSTATS:
+		dev_dstats_tx_dropped(dev);
+		break;
+	}
+}
+
 #define __netdev_alloc_pcpu_stats(type, gfp)				\
 ({									\
 	typeof(type) __percpu *pcpu_stats = alloc_percpu_gfp(type, gfp);\
