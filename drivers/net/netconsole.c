@@ -120,6 +120,7 @@ enum sysdata_feature {
 enum target_state {
 	STATE_DISABLED,
 	STATE_ENABLED,
+	STATE_DEACTIVATED,
 };
 
 /**
@@ -547,6 +548,14 @@ static ssize_t enabled_store(struct config_item *item,
 	ret = kstrtobool(buf, &enabled);
 	if (ret)
 		goto out_unlock;
+
+	/* When the user explicitly enables or disables a target that is
+	 * currently deactivated, reset its state to disabled. The DEACTIVATED
+	 * state only tracks interface-driven deactivation and should _not_
+	 * persist when the user manually changes the target's enabled state.
+	 */
+	if (nt->enabled == STATE_DEACTIVATED)
+		nt->enabled = STATE_DISABLED;
 
 	ret = -EINVAL;
 	current_state = nt->enabled == STATE_ENABLED;
@@ -1443,7 +1452,7 @@ static int netconsole_netdev_event(struct notifier_block *this,
 			case NETDEV_RELEASE:
 			case NETDEV_JOIN:
 			case NETDEV_UNREGISTER:
-				nt->enabled = STATE_DISABLED;
+				nt->enabled = STATE_DEACTIVATED;
 				list_move(&nt->list, &target_cleanup_list);
 				stopped = true;
 			}
