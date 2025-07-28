@@ -1427,6 +1427,22 @@ static int prepare_extradata(struct netconsole_target *nt)
 }
 #endif	/* CONFIG_NETCONSOLE_DYNAMIC */
 
+static int resume_target(struct netconsole_target *nt,
+			 struct net_device *dev)
+{
+	int ret;
+
+	if (strncmp(nt->np.dev_name, dev->name, IFNAMSIZ))
+		return 0;
+
+	ret = netpoll_setup(&nt->np);
+	if (ret)
+		/* netpoll fails to register once do not try again */
+		nt->enabled = STATE_DISABLED;
+
+	return ret;
+}
+
 /* Handle network interface device notifications */
 static int netconsole_netdev_event(struct notifier_block *this,
 				   unsigned long event, void *ptr)
@@ -1457,6 +1473,8 @@ static int netconsole_netdev_event(struct notifier_block *this,
 				stopped = true;
 			}
 		}
+		if (event == NETDEV_REGISTER && nt->enabled == STATE_DEACTIVATED)
+			resume_target(nt, dev);
 		netconsole_target_put(nt);
 	}
 	spin_unlock_irqrestore(&target_list_lock, flags);
