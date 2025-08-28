@@ -242,6 +242,7 @@ static struct netconsole_target *alloc_and_init(void)
 	if (!nt)
 		return nt;
 
+	trace_printk("got new %p\n", nt);
 	if (IS_ENABLED(CONFIG_NETCONSOLE_EXTENDED_LOG))
 		nt->extended = true;
 	if (IS_ENABLED(CONFIG_NETCONSOLE_PREPEND_RELEASE))
@@ -276,6 +277,7 @@ static void netconsole_process_cleanups_core(void)
 		 */
 		list_del(&nt->list);
 		mutex_lock(&target_list_lock);
+		trace_printk("re-adding nt = %p\n", nt);
 		list_add_rcu(&nt->list, &target_list);
 		mutex_unlock(&target_list_lock);
 	}
@@ -369,6 +371,11 @@ static struct netconsole_target *to_target(struct config_item *item)
  */
 static void netconsole_process_cleanups(void)
 {
+	/* Make sure that there are no one reading the target,
+	 * that will be freed soon
+	 */
+	synchronize_rcu_expedited();
+
 	/* rtnl lock is called here, because it has precedence over
 	 * target_cleanup_list_lock mutex and target_cleanup_list
 	 */
@@ -517,14 +524,14 @@ static void unregister_netcons_consoles(void)
 	struct netconsole_target *nt;
 	u32 console_type_needed = 0;
 
-	mutex_lock(&target_list_lock);
+	rcu_read_lock();
 	list_for_each_entry(nt, &target_list, list) {
 		if (nt->extended)
 			console_type_needed |= CONS_EXTENDED;
 		else
 			console_type_needed |= CONS_BASIC;
 	}
-	mutex_unlock(&target_list_lock);
+	rcu_read_unlock();
 
 	if (!(console_type_needed & CONS_EXTENDED) &&
 	    console_is_registered(&netconsole_ext))
@@ -617,6 +624,7 @@ static ssize_t enabled_store(struct config_item *item,
 		 * target_list_lock
 		 */
 		list_del_rcu(&nt->list);
+		trace_printk("moving out %p\n", nt);
 		list_add(&nt->list, &target_cleanup_list);
 		mutex_unlock(&target_list_lock);
 		mutex_unlock(&target_cleanup_list_lock);
@@ -1287,6 +1295,7 @@ static struct config_group *make_netconsole_target(struct config_group *group,
 
 	/* Adding, but it is disabled */
 	mutex_lock(&target_list_lock);
+	trace_printk("make adding %p\n", nt);
 	list_add_rcu(&nt->list, &target_list);
 	mutex_unlock(&target_list_lock);
 
@@ -1436,6 +1445,7 @@ static int netconsole_netdev_event(struct notifier_block *this,
 			case NETDEV_UNREGISTER:
 				nt->enabled = false;
 				list_del_rcu(&nt->list);
+				trace_printk("removing nt %p from list\n", nt);
 				list_add(&nt->list, &target_cleanup_list);
 				stopped = true;
 			}
@@ -1695,14 +1705,28 @@ static void write_ext_msg(struct console *con, const char *msg,
 			  unsigned int len)
 {
 	struct netconsole_target *nt;
+	int i = 0;
 
 	if ((oops_only && !oops_in_progress) || list_empty(&target_list))
 		return;
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(nt, &target_list, list)
+		i += 1;
 		if (nt->extended && nt->enabled && netif_running(nt->np.dev))
 			send_ext_msg_udp(nt, msg, len);
+		if (i > 100) {
+			trace_printk("BROKEN\n");
+			trace_printk("nt = %p\n", nt);
+			trace_printk("name = %s\n", nt->np.dev_name);
+			trace_printk("enabled = %d\n", nt->enabled);
+			trace_printk("extended = %d\n", nt->extended);
+			trace_printk("name = %s\n", nt->np.name);
+			trace_printk("dname = %s\n", nt->np.dev->name);
+
+			rcu_read_unlock();
+			return;
+		}
 	rcu_read_unlock();
 }
 
@@ -1719,7 +1743,7 @@ static void write_msg(struct console *con, const char *msg, unsigned int len)
 		return;
 
 	rcu_read_lock();
-	list_for_each_entry(nt, &target_list, list) {
+	list_for_each_entry_rcu(nt, &target_list, list) {
 		if (!nt->extended && nt->enabled && netif_running(nt->np.dev)) {
 			/*
 			 * We nest this inside the for-each-target loop above
@@ -1890,6 +1914,7 @@ fail:
 /* Cleanup netpoll for given target (from boot/module param) and free it */
 static void free_param_target(struct netconsole_target *nt)
 {
+	synchronize_rcu_expedited();
 	netpoll_cleanup(&nt->np);
 	kfree(nt);
 }
@@ -1934,6 +1959,7 @@ static int __init init_netconsole(void)
 			}
 
 			mutex_lock(&target_list_lock);
+			trace_printk("init adding %p\n", nt);
 			list_add_rcu(&nt->list, &target_list);
 			mutex_unlock(&target_list_lock);
 			count++;
@@ -1994,10 +2020,12 @@ static void __exit cleanup_netconsole(void)
 	 * destroy them. Skipping the list lock is safe here, and
 	 * netpoll_cleanup() will sleep.
 	 */
+	mutex_lock(&target_list_lock);
 	list_for_each_entry_safe(nt, tmp, &target_list, list) {
-		list_del(&nt->list);
+		list_del_rcu(&nt->list);
 		free_param_target(nt);
 	}
+	mutex_unlock(&target_list_lock);
 }
 
 /*
