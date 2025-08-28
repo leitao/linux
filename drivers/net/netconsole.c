@@ -81,7 +81,7 @@ static LIST_HEAD(target_list);
 static LIST_HEAD(target_cleanup_list);
 
 /* This needs to be a spinlock because write_msg() cannot sleep */
-static DEFINE_SPINLOCK(target_list_lock);
+static DEFINE_MUTEX(target_list_lock);
 /* This needs to be a mutex because netpoll_cleanup might sleep */
 static DEFINE_MUTEX(target_cleanup_list_lock);
 
@@ -262,7 +262,6 @@ static struct netconsole_target *alloc_and_init(void)
 static void netconsole_process_cleanups_core(void)
 {
 	struct netconsole_target *nt, *tmp;
-	unsigned long flags;
 
 	/* The cleanup needs RTNL locked */
 	ASSERT_RTNL();
@@ -275,9 +274,10 @@ static void netconsole_process_cleanups_core(void)
 		/* moved the cleaned target to target_list. Need to hold both
 		 * locks
 		 */
-		spin_lock_irqsave(&target_list_lock, flags);
-		list_move(&nt->list, &target_list);
-		spin_unlock_irqrestore(&target_list_lock, flags);
+		list_del(&nt->list);
+		mutex_lock(&target_list_lock);
+		list_add_rcu(&nt->list, &target_list);
+		mutex_unlock(&target_list_lock);
 	}
 	WARN_ON_ONCE(!list_empty(&target_cleanup_list));
 	mutex_unlock(&target_cleanup_list_lock);
@@ -516,16 +516,15 @@ static void unregister_netcons_consoles(void)
 {
 	struct netconsole_target *nt;
 	u32 console_type_needed = 0;
-	unsigned long flags;
 
-	spin_lock_irqsave(&target_list_lock, flags);
+	mutex_lock(&target_list_lock);
 	list_for_each_entry(nt, &target_list, list) {
 		if (nt->extended)
 			console_type_needed |= CONS_EXTENDED;
 		else
 			console_type_needed |= CONS_BASIC;
 	}
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	mutex_unlock(&target_list_lock);
 
 	if (!(console_type_needed & CONS_EXTENDED) &&
 	    console_is_registered(&netconsole_ext))
@@ -560,7 +559,6 @@ static ssize_t enabled_store(struct config_item *item,
 		const char *buf, size_t count)
 {
 	struct netconsole_target *nt = to_target(item);
-	unsigned long flags;
 	bool enabled;
 	ssize_t ret;
 
@@ -613,13 +611,14 @@ static ssize_t enabled_store(struct config_item *item,
 		 * nt->np.dev == NULL and nt->enabled == true
 		 */
 		mutex_lock(&target_cleanup_list_lock);
-		spin_lock_irqsave(&target_list_lock, flags);
+		mutex_lock(&target_list_lock);
 		nt->enabled = false;
 		/* Remove the target from the list, while holding
 		 * target_list_lock
 		 */
-		list_move(&nt->list, &target_cleanup_list);
-		spin_unlock_irqrestore(&target_list_lock, flags);
+		list_del_rcu(&nt->list);
+		list_add(&nt->list, &target_cleanup_list);
+		mutex_unlock(&target_list_lock);
 		mutex_unlock(&target_cleanup_list_lock);
 		/* Unregister consoles, whose the last target of that type got
 		 * disabled.
@@ -1244,16 +1243,15 @@ static void init_target_config_group(struct netconsole_target *nt,
 static struct netconsole_target *find_cmdline_target(const char *name)
 {
 	struct netconsole_target *nt, *ret = NULL;
-	unsigned long flags;
 
-	spin_lock_irqsave(&target_list_lock, flags);
-	list_for_each_entry(nt, &target_list, list) {
+	rcu_read_lock();
+	list_for_each_entry_rcu(nt, &target_list, list) {
 		if (!strcmp(nt->group.cg_item.ci_name, name)) {
 			ret = nt;
 			break;
 		}
 	}
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	rcu_read_unlock();
 
 	return ret;
 }
@@ -1266,7 +1264,6 @@ static struct config_group *make_netconsole_target(struct config_group *group,
 						   const char *name)
 {
 	struct netconsole_target *nt;
-	unsigned long flags;
 
 	/* Checking if a target by this name was created at boot time.  If so,
 	 * attach a configfs entry to that target.  This enables dynamic
@@ -1289,9 +1286,9 @@ static struct config_group *make_netconsole_target(struct config_group *group,
 	init_target_config_group(nt, name);
 
 	/* Adding, but it is disabled */
-	spin_lock_irqsave(&target_list_lock, flags);
-	list_add(&nt->list, &target_list);
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	mutex_lock(&target_list_lock);
+	list_add_rcu(&nt->list, &target_list);
+	mutex_unlock(&target_list_lock);
 
 	return &nt->group;
 }
@@ -1299,12 +1296,11 @@ static struct config_group *make_netconsole_target(struct config_group *group,
 static void drop_netconsole_target(struct config_group *group,
 				   struct config_item *item)
 {
-	unsigned long flags;
 	struct netconsole_target *nt = to_target(item);
 
-	spin_lock_irqsave(&target_list_lock, flags);
-	list_del(&nt->list);
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	mutex_lock(&target_list_lock);
+	list_del_rcu(&nt->list);
+	mutex_unlock(&target_list_lock);
 
 	/*
 	 * The target may have never been enabled, or was manually disabled
@@ -1418,7 +1414,6 @@ static int prepare_extradata(struct netconsole_target *nt)
 static int netconsole_netdev_event(struct notifier_block *this,
 				   unsigned long event, void *ptr)
 {
-	unsigned long flags;
 	struct netconsole_target *nt, *tmp;
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 	bool stopped = false;
@@ -1428,7 +1423,7 @@ static int netconsole_netdev_event(struct notifier_block *this,
 		goto done;
 
 	mutex_lock(&target_cleanup_list_lock);
-	spin_lock_irqsave(&target_list_lock, flags);
+	mutex_lock(&target_list_lock);
 	list_for_each_entry_safe(nt, tmp, &target_list, list) {
 		netconsole_target_get(nt);
 		if (nt->np.dev == dev) {
@@ -1440,13 +1435,14 @@ static int netconsole_netdev_event(struct notifier_block *this,
 			case NETDEV_JOIN:
 			case NETDEV_UNREGISTER:
 				nt->enabled = false;
-				list_move(&nt->list, &target_cleanup_list);
+				list_del_rcu(&nt->list);
+				list_add(&nt->list, &target_cleanup_list);
 				stopped = true;
 			}
 		}
 		netconsole_target_put(nt);
 	}
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	mutex_unlock(&target_list_lock);
 	mutex_unlock(&target_cleanup_list_lock);
 
 	if (stopped) {
@@ -1699,22 +1695,20 @@ static void write_ext_msg(struct console *con, const char *msg,
 			  unsigned int len)
 {
 	struct netconsole_target *nt;
-	unsigned long flags;
 
 	if ((oops_only && !oops_in_progress) || list_empty(&target_list))
 		return;
 
-	spin_lock_irqsave(&target_list_lock, flags);
-	list_for_each_entry(nt, &target_list, list)
+	rcu_read_lock();
+	list_for_each_entry_rcu(nt, &target_list, list)
 		if (nt->extended && nt->enabled && netif_running(nt->np.dev))
 			send_ext_msg_udp(nt, msg, len);
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	rcu_read_unlock();
 }
 
 static void write_msg(struct console *con, const char *msg, unsigned int len)
 {
 	int frag, left;
-	unsigned long flags;
 	struct netconsole_target *nt;
 	const char *tmp;
 
@@ -1724,7 +1718,7 @@ static void write_msg(struct console *con, const char *msg, unsigned int len)
 	if (list_empty(&target_list))
 		return;
 
-	spin_lock_irqsave(&target_list_lock, flags);
+	rcu_read_lock();
 	list_for_each_entry(nt, &target_list, list) {
 		if (!nt->extended && nt->enabled && netif_running(nt->np.dev)) {
 			/*
@@ -1742,7 +1736,7 @@ static void write_msg(struct console *con, const char *msg, unsigned int len)
 			}
 		}
 	}
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	rcu_read_unlock();
 }
 
 static int netconsole_parser_cmdline(struct netpoll *np, char *opt)
@@ -1918,7 +1912,6 @@ static int __init init_netconsole(void)
 	struct netconsole_target *nt, *tmp;
 	u32 console_type_needed = 0;
 	unsigned int count = 0;
-	unsigned long flags;
 	char *target_config;
 	char *input = config;
 
@@ -1940,9 +1933,9 @@ static int __init init_netconsole(void)
 				netconsole.flags |= CON_PRINTBUFFER;
 			}
 
-			spin_lock_irqsave(&target_list_lock, flags);
-			list_add(&nt->list, &target_list);
-			spin_unlock_irqrestore(&target_list_lock, flags);
+			mutex_lock(&target_list_lock);
+			list_add_rcu(&nt->list, &target_list);
+			mutex_unlock(&target_list_lock);
 			count++;
 		}
 	}
