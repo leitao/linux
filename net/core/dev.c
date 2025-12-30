@@ -11999,6 +11999,14 @@ struct net_device *alloc_netdev_mqs(int sizeof_priv, const char *name,
 	if (!dev)
 		return NULL;
 
+	/* Warn if the allocated memory doesn't meet alignment requirements.
+	 * struct net_device is declared ____cacheline_aligned.
+	 */
+	if (WARN_ON_ONCE(!IS_ALIGNED((unsigned long)dev, SMP_CACHE_BYTES))) {
+		kvfree(dev);
+		return NULL;
+	}
+
 	dev->priv_len = sizeof_priv;
 
 	ref_tracker_dir_init(&dev->refcnt_tracker, 128, "netdev");
