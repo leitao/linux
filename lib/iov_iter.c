@@ -510,7 +510,7 @@ static void iov_iter_bvec_advance(struct iov_iter *i, size_t size)
 	size += i->iov_offset;
 
 	for (bvec = i->bvec, end = bvec + i->nr_segs; bvec < end; bvec++) {
-		if (likely(size < bvec->bv_len))
+		if (size < bvec->bv_len)
 			break;
 		size -= bvec->bv_len;
 	}
