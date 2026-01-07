@@ -4702,7 +4702,7 @@ static inline void mas_awalk(struct ma_state *mas, unsigned long size)
 static inline int mas_sparse_area(struct ma_state *mas, unsigned long min,
 				unsigned long max, unsigned long size, bool fwd)
 {
-	if (!unlikely(mas_is_none(mas)) && min == 0) {
+	if (!mas_is_none(mas) && min == 0) {
 		min++;
 		/*
 		 * At this time, min is increased, we need to recheck whether
