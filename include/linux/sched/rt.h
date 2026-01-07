@@ -8,12 +8,12 @@ struct task_struct;
 
 static inline bool rt_prio(int prio)
 {
-	return unlikely(prio < MAX_RT_PRIO && prio >= MAX_DL_PRIO);
+	return prio < MAX_RT_PRIO && prio >= MAX_DL_PRIO;
 }
 
 static inline bool rt_or_dl_prio(int prio)
 {
-	return unlikely(prio < MAX_RT_PRIO);
+	return prio < MAX_RT_PRIO;
 }
 
 /*
