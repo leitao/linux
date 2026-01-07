@@ -1490,8 +1490,7 @@ __acquires(&uap->port.lock)
 static bool pl011_tx_char(struct uart_amba_port *uap, unsigned char c,
 			  bool from_irq)
 {
-	if (unlikely(!from_irq) &&
-	    pl011_read(uap, REG_FR) & UART01x_FR_TXFF)
+	if (!from_irq && pl011_read(uap, REG_FR) & UART01x_FR_TXFF)
 		return false; /* unable to transmit character */
 
 	pl011_write(c, uap, REG_DR);
@@ -1524,7 +1523,7 @@ static bool pl011_tx_chars(struct uart_amba_port *uap, bool from_irq)
 	while (1) {
 		unsigned char c;
 
-		if (likely(from_irq) && count-- == 0)
+		if (from_irq && count-- == 0)
 			break;
 
 		if (!kfifo_peek(&tport->xmit_fifo, &c))
