@@ -2213,6 +2213,26 @@ static u16 printk_sprint(char *text, u16 size, int facility,
 	return text_len;
 }
 
+#ifdef CONFIG_PRINTK_EXECUTION_CTX
+static inline void printk_save_execution_ctx(struct printk_info *info)
+{
+	get_task_comm(info->msg_comm, current);
+	info->msg_cpu = smp_processor_id();
+}
+
+static inline void pmsg_load_execution_ctx(struct printk_message *pmsg,
+					   const struct printk_info *info)
+{
+	memcpy(pmsg->msg_comm, info->msg_comm, TASK_COMM_LEN);
+	pmsg->msg_cpu = info->msg_cpu;
+}
+#else
+static inline void printk_save_execution_ctx(struct printk_info *info) {}
+
+static inline void pmsg_load_execution_ctx(struct printk_message *pmsg,
+					   const struct printk_info *info) {}
+#endif
+
 __printf(4, 0)
 int vprintk_store(int facility, int level,
 		  const struct dev_printk_info *dev_info,
@@ -2320,6 +2340,7 @@ int vprintk_store(int facility, int level,
 	r.info->caller_id = caller_id;
 	if (dev_info)
 		memcpy(&r.info->dev_info, dev_info, sizeof(r.info->dev_info));
+	printk_save_execution_ctx(r.info);
 
 	/* A message without a trailing newline can be continued. */
 	if (!(flags & LOG_NEWLINE))
@@ -3002,6 +3023,7 @@ bool printk_get_next_message(struct printk_message *pmsg, u64 seq,
 	pmsg->seq = r.info->seq;
 	pmsg->dropped = r.info->seq - seq;
 	force_con = r.info->flags & LOG_FORCE_CON;
+	pmsg_load_execution_ctx(pmsg, r.info);
 
 	/*
 	 * Skip records that are not forced to be printed on consoles and that

@@ -19,6 +19,7 @@
 #include <linux/irq_work.h>
 #include <linux/rculist.h>
 #include <linux/rcuwait.h>
+#include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/types.h>
 #include <linux/vesa.h>
@@ -298,12 +299,18 @@ struct nbcon_context {
  * @outbuf:		Pointer to the text buffer for output
  * @len:		Length to write
  * @unsafe_takeover:	If a hostile takeover in an unsafe state has occurred
+ * @msg_comm:		Name of the task that generated the message
+ * @msg_cpu:		CPU on which the message was generated
  */
 struct nbcon_write_context {
 	struct nbcon_context	__private ctxt;
 	char			*outbuf;
 	unsigned int		len;
 	bool			unsafe_takeover;
+#ifdef CONFIG_PRINTK_EXECUTION_CTX
+	char			msg_comm[TASK_COMM_LEN];
+	int			msg_cpu;
+#endif
 };
 
 /**

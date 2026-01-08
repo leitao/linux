@@ -281,12 +281,18 @@ struct printk_buffers {
  *		nothing to output and this record should be skipped.
  * @seq:	The sequence number of the record used for @pbufs->outbuf.
  * @dropped:	The number of dropped records from reading @seq.
+ * @msg_comm:	Name of the task that generated the message.
+ * @msg_cpu:	CPU on which the message was generated.
  */
 struct printk_message {
 	struct printk_buffers	*pbufs;
 	unsigned int		outbuf_len;
 	u64			seq;
 	unsigned long		dropped;
+#ifdef CONFIG_PRINTK_EXECUTION_CTX
+	char			msg_comm[TASK_COMM_LEN];
+	int			msg_cpu;
+#endif
 };
 
 bool printk_get_next_message(struct printk_message *pmsg, u64 seq,

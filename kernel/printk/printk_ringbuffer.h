@@ -6,6 +6,7 @@
 #include <linux/atomic.h>
 #include <linux/bits.h>
 #include <linux/dev_printk.h>
+#include <linux/sched.h>
 #include <linux/stddef.h>
 #include <linux/types.h>
 
@@ -23,6 +24,10 @@ struct printk_info {
 	u8	flags:5;	/* internal record flags */
 	u8	level:3;	/* syslog level */
 	u32	caller_id;	/* thread id or processor id */
+#ifdef CONFIG_PRINTK_EXECUTION_CTX
+	char	msg_comm[TASK_COMM_LEN]; /* name of the task that generated the message */
+	int	msg_cpu;	/* CPU where the message was generated */
+#endif
 
 	struct dev_printk_info	dev_info;
 };
