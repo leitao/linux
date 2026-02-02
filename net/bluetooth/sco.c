@@ -1538,7 +1538,7 @@ static const struct proto_ops sco_sock_ops = {
 	.socketpair	= sock_no_socketpair,
 	.shutdown	= sco_sock_shutdown,
 	.setsockopt	= sco_sock_setsockopt,
-	.getsockopt_iter = sco_sock_getsockopt
+	.getsockopt = sco_sock_getsockopt
 };
 
 static const struct net_proto_family sco_sock_family_ops = {

@@ -4827,9 +4827,9 @@ int tcp_getsockopt(struct sock *sk, int level, int optname, sockopt_t *opt)
 	if (level != SOL_TCP) {
 		/*
 		 * Paired with WRITE_ONCE() in do_ipv6_setsockopt() and
-		 * tcp_v6_connect(). Call into the AF-specific getsockopt_iter.
+		 * tcp_v6_connect(). Call into the AF-specific getsockopt.
 		 */
-		return READ_ONCE(icsk->icsk_af_ops)->getsockopt_iter(sk, level,
+		return READ_ONCE(icsk->icsk_af_ops)->getsockopt(sk, level,
 								     optname, opt);
 	}
 	return do_tcp_getsockopt(sk, level, optname, opt);

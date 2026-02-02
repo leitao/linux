@@ -3176,7 +3176,7 @@ int udp_getsockopt(struct sock *sk, int level, int optname,
 {
 	if (level == SOL_UDP  ||  level == SOL_UDPLITE)
 		return udp_lib_getsockopt(sk, level, optname, opt);
-	return ip_getsockopt_iter(sk, level, optname, opt);
+	return ip_getsockopt(sk, level, optname, opt);
 }
 
 /**
@@ -3247,7 +3247,7 @@ struct proto udp_prot = {
 	.init			= udp_init_sock,
 	.destroy		= udp_destroy_sock,
 	.setsockopt		= udp_setsockopt,
-	.getsockopt_iter	= udp_getsockopt,
+	.getsockopt = udp_getsockopt,
 	.sendmsg		= udp_sendmsg,
 	.recvmsg		= udp_recvmsg,
 	.splice_eof		= udp_splice_eof,

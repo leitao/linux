@@ -48,9 +48,7 @@ struct inet_connection_sock_af_ops {
 	int	    (*setsockopt)(struct sock *sk, int level, int optname,
 				  sockptr_t optval, unsigned int optlen);
 	int	    (*getsockopt)(struct sock *sk, int level, int optname,
-				  char __user *optval, int __user *optlen);
-	int	    (*getsockopt_iter)(struct sock *sk, int level, int optname,
-				       sockopt_t *opt);
+				  sockopt_t *opt);
 	void	    (*mtu_reduced)(struct sock *sk);
 };
 

@@ -3938,24 +3938,14 @@ EXPORT_SYMBOL(sock_recv_errqueue);
  *	this means if you specify SO_ERROR (otherwise what is the point of it).
  */
 int sock_common_getsockopt(struct socket *sock, int level, int optname,
-			   char __user *optval, int __user *optlen)
+			   sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 
 	/* IPV6_ADDRFORM can change sk->sk_prot under us. */
-	return READ_ONCE(sk->sk_prot)->getsockopt(sk, level, optname, optval, optlen);
+	return READ_ONCE(sk->sk_prot)->getsockopt(sk, level, optname, opt);
 }
 EXPORT_SYMBOL(sock_common_getsockopt);
-
-int sock_common_getsockopt_iter(struct socket *sock, int level, int optname,
-				sockopt_t *opt)
-{
-	struct sock *sk = sock->sk;
-
-	/* IPV6_ADDRFORM can change sk->sk_prot under us. */
-	return READ_ONCE(sk->sk_prot)->getsockopt_iter(sk, level, optname, opt);
-}
-EXPORT_SYMBOL(sock_common_getsockopt_iter);
 
 int sock_common_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			int flags)

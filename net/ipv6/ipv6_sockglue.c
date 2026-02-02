@@ -1450,44 +1450,14 @@ int do_ipv6_getsockopt(struct sock *sk, int level, int optname,
 	return 0;
 }
 
-int ipv6_getsockopt(struct sock *sk, int level, int optname,
-		    char __user *optval, int __user *optlen)
-{
-	int err;
-
-	if (level == SOL_IP && sk->sk_type != SOCK_RAW)
-		return ip_getsockopt(sk, level, optname, optval, optlen);
-
-	if (level != SOL_IPV6)
-		return -ENOPROTOOPT;
-
-	err = do_ipv6_getsockopt(sk, level, optname,
-				 USER_SOCKPTR(optval), USER_SOCKPTR(optlen));
-#ifdef CONFIG_NETFILTER
-	/* we need to exclude all possible ENOPROTOOPTs except default case */
-	if (err == -ENOPROTOOPT && optname != IPV6_2292PKTOPTIONS) {
-		int len;
-
-		if (get_user(len, optlen))
-			return -EFAULT;
-
-		err = nf_getsockopt(sk, PF_INET6, optname, optval, &len);
-		if (err >= 0)
-			err = put_user(len, optlen);
-	}
-#endif
-	return err;
-}
-EXPORT_SYMBOL(ipv6_getsockopt);
-
-int ipv6_getsockopt_iter(struct sock *sk, int level, int optname, sockopt_t *opt)
+int ipv6_getsockopt(struct sock *sk, int level, int optname, sockopt_t *opt)
 {
 	sockptr_t optval, optlen_ptr;
 	int koptlen = opt->optlen;
 	int err;
 
 	if (level == SOL_IP && sk->sk_type != SOCK_RAW)
-		return ip_getsockopt_iter(sk, level, optname, opt);
+		return ip_getsockopt(sk, level, optname, opt);
 
 	if (level != SOL_IPV6)
 		return -ENOPROTOOPT;
@@ -1531,4 +1501,4 @@ int ipv6_getsockopt_iter(struct sock *sk, int level, int optname, sockopt_t *opt
 	}
 	return err;
 }
-EXPORT_SYMBOL(ipv6_getsockopt_iter);
+EXPORT_SYMBOL(ipv6_getsockopt);

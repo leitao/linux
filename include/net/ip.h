@@ -808,9 +808,7 @@ int ip_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 		  unsigned int optlen);
 int do_ip_getsockopt(struct sock *sk, int level, int optname,
 		     sockptr_t optval, sockptr_t optlen);
-int ip_getsockopt(struct sock *sk, int level, int optname, char __user *optval,
-		  int __user *optlen);
-int ip_getsockopt_iter(struct sock *sk, int level, int optname, sockopt_t *opt);
+int ip_getsockopt(struct sock *sk, int level, int optname, sockopt_t *opt);
 int ip_ra_control(struct sock *sk, unsigned char on,
 		  void (*destructor)(struct sock *));
 

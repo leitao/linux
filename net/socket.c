@@ -2357,7 +2357,7 @@ SYSCALL_DEFINE5(setsockopt, int, fd, int, level, int, optname,
 INDIRECT_CALLABLE_DECLARE(bool tcp_bpf_bypass_getsockopt(int level,
 							 int optname));
 
-static int do_sock_getsockopt_iter(struct socket *sock,
+static int do_sock_getsockopt_sockopt(struct socket *sock,
 				   const struct proto_ops *ops, int level,
 				   int optname, sockptr_t optval,
 				   sockptr_t optlen)
@@ -2379,7 +2379,7 @@ static int do_sock_getsockopt_iter(struct socket *sock,
 	}
 	opt.optlen = koptlen;
 
-	err = ops->getsockopt_iter(sock, level, optname, &opt);
+	err = ops->getsockopt(sock, level, optname, &opt);
 	if (err)
 		return err;
 
@@ -2406,16 +2406,9 @@ int do_sock_getsockopt(struct socket *sock, bool compat, int level,
 	ops = READ_ONCE(sock->ops);
 	if (level == SOL_SOCKET) {
 		err = sk_getsockopt(sock->sk, level, optname, optval, optlen);
-	} else if (ops->getsockopt_iter) {
-		err = do_sock_getsockopt_iter(sock, ops, level, optname,
-					      optval, optlen);
 	} else if (ops->getsockopt) {
-		if (WARN_ONCE(optval.is_kernel || optlen.is_kernel,
-			      "Invalid argument type"))
-			return -EOPNOTSUPP;
-
-		err = ops->getsockopt(sock, level, optname, optval.user,
-				      optlen.user);
+		err = do_sock_getsockopt_sockopt(sock, ops, level, optname,
+					      optval, optlen);
 	} else {
 		err = -EOPNOTSUPP;
 	}

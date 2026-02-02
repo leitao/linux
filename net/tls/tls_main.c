@@ -592,7 +592,7 @@ static int tls_getsockopt(struct sock *sk, int level, int optname,
 	struct tls_context *ctx = tls_get_ctx(sk);
 
 	if (level != SOL_TLS)
-		return ctx->sk_proto->getsockopt_iter(sk, level, optname, opt);
+		return ctx->sk_proto->getsockopt(sk, level, optname, opt);
 
 	return do_tls_getsockopt(sk, optname, opt);
 }
@@ -994,7 +994,7 @@ static void build_protos(struct proto prot[TLS_NUM_CONFIG][TLS_NUM_CONFIG],
 {
 	prot[TLS_BASE][TLS_BASE] = *base;
 	prot[TLS_BASE][TLS_BASE].setsockopt	= tls_setsockopt;
-	prot[TLS_BASE][TLS_BASE].getsockopt_iter	= tls_getsockopt;
+	prot[TLS_BASE][TLS_BASE].getsockopt = tls_getsockopt;
 	prot[TLS_BASE][TLS_BASE].disconnect	= tls_disconnect;
 	prot[TLS_BASE][TLS_BASE].close		= tls_sk_proto_close;
 

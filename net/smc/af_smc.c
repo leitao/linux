@@ -3171,11 +3171,11 @@ int smc_getsockopt(struct socket *sock, int level, int optname,
 		return -EBADF;
 	}
 	/* socket options apply to the CLC socket */
-	if (unlikely(!smc->clcsock->ops->getsockopt_iter)) {
+	if (unlikely(!smc->clcsock->ops->getsockopt)) {
 		mutex_unlock(&smc->clcsock_release_lock);
 		return -EOPNOTSUPP;
 	}
-	rc = smc->clcsock->ops->getsockopt_iter(smc->clcsock, level, optname,
+	rc = smc->clcsock->ops->getsockopt(smc->clcsock, level, optname,
 						opt);
 	mutex_unlock(&smc->clcsock_release_lock);
 	return rc;
@@ -3329,7 +3329,7 @@ static const struct proto_ops smc_sock_ops = {
 	.listen		= smc_listen,
 	.shutdown	= smc_shutdown,
 	.setsockopt	= smc_setsockopt,
-	.getsockopt_iter = smc_getsockopt,
+	.getsockopt = smc_getsockopt,
 	.sendmsg	= smc_sendmsg,
 	.recvmsg	= smc_recvmsg,
 	.mmap		= sock_no_mmap,

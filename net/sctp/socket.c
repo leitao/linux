@@ -8061,7 +8061,7 @@ static int sctp_getsockopt(struct sock *sk, int level, int optname,
 	if (level != SOL_SCTP) {
 		struct sctp_af *af = sctp_sk(sk)->pf->af;
 
-		retval = af->getsockopt_iter(sk, level, optname, opt);
+		retval = af->getsockopt(sk, level, optname, opt);
 		return retval;
 	}
 
@@ -9548,7 +9548,7 @@ struct proto sctp_prot = {
 	.destroy     =	sctp_destroy_sock,
 	.shutdown    =	sctp_shutdown,
 	.setsockopt  =	sctp_setsockopt,
-	.getsockopt_iter  =	sctp_getsockopt,
+	.getsockopt =	sctp_getsockopt,
 	.bpf_bypass_getsockopt	= sctp_bpf_bypass_getsockopt,
 	.sendmsg     =	sctp_sendmsg,
 	.recvmsg     =	sctp_recvmsg,
@@ -9603,7 +9603,7 @@ struct proto sctpv6_prot = {
 	.destroy	= sctp_destroy_sock,
 	.shutdown	= sctp_shutdown,
 	.setsockopt	= sctp_setsockopt,
-	.getsockopt_iter	= sctp_getsockopt,
+	.getsockopt = sctp_getsockopt,
 	.bpf_bypass_getsockopt	= sctp_bpf_bypass_getsockopt,
 	.sendmsg	= sctp_sendmsg,
 	.recvmsg	= sctp_recvmsg,

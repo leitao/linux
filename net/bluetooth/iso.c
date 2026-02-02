@@ -2653,7 +2653,7 @@ static const struct proto_ops iso_sock_ops = {
 	.socketpair	= sock_no_socketpair,
 	.shutdown	= iso_sock_shutdown,
 	.setsockopt	= iso_sock_setsockopt,
-	.getsockopt_iter	= iso_sock_getsockopt
+	.getsockopt = iso_sock_getsockopt
 };
 
 static const struct net_proto_family iso_sock_family_ops = {

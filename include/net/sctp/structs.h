@@ -433,7 +433,7 @@ struct sctp_af {
 					 int optname,
 					 sockptr_t optval,
 					 unsigned int optlen);
-	int		(*getsockopt_iter)	(struct sock *sk,
+	int		(*getsockopt)	(struct sock *sk,
 					 int level,
 					 int optname,
 					 sockopt_t *opt);

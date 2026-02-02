@@ -1984,7 +1984,7 @@ static const struct proto_ops l2cap_sock_ops = {
 	.socketpair	= sock_no_socketpair,
 	.shutdown	= l2cap_sock_shutdown,
 	.setsockopt	= l2cap_sock_setsockopt,
-	.getsockopt_iter = l2cap_sock_getsockopt
+	.getsockopt = l2cap_sock_getsockopt
 };
 
 static const struct net_proto_family l2cap_sock_family_ops = {

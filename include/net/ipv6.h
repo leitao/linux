@@ -1187,8 +1187,6 @@ int ipv6_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 int do_ipv6_getsockopt(struct sock *sk, int level, int optname,
 		       sockptr_t optval, sockptr_t optlen);
 int ipv6_getsockopt(struct sock *sk, int level, int optname,
-		    char __user *optval, int __user *optlen);
-int ipv6_getsockopt_iter(struct sock *sk, int level, int optname,
 			 struct sockopt *opt);
 
 int __ip6_datagram_connect(struct sock *sk, struct sockaddr_unsized *addr,

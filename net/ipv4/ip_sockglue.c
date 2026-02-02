@@ -1758,34 +1758,7 @@ out:
 	return err;
 }
 
-int ip_getsockopt(struct sock *sk, int level,
-		  int optname, char __user *optval, int __user *optlen)
-{
-	int err;
-
-	err = do_ip_getsockopt(sk, level, optname,
-			       USER_SOCKPTR(optval), USER_SOCKPTR(optlen));
-
-#ifdef CONFIG_NETFILTER
-	/* we need to exclude all possible ENOPROTOOPTs except default case */
-	if (err == -ENOPROTOOPT && optname != IP_PKTOPTIONS &&
-			!ip_mroute_opt(optname)) {
-		int len;
-
-		if (get_user(len, optlen))
-			return -EFAULT;
-
-		err = nf_getsockopt(sk, PF_INET, optname, optval, &len);
-		if (err >= 0)
-			err = put_user(len, optlen);
-		return err;
-	}
-#endif
-	return err;
-}
-EXPORT_SYMBOL(ip_getsockopt);
-
-int ip_getsockopt_iter(struct sock *sk, int level, int optname, sockopt_t *opt)
+int ip_getsockopt(struct sock *sk, int level, int optname, sockopt_t *opt)
 {
 	sockptr_t optval, optlen_ptr;
 	int koptlen = opt->optlen;
@@ -1831,4 +1804,4 @@ int ip_getsockopt_iter(struct sock *sk, int level, int optname, sockopt_t *opt)
 	}
 	return err;
 }
-EXPORT_SYMBOL(ip_getsockopt_iter);
+EXPORT_SYMBOL(ip_getsockopt);

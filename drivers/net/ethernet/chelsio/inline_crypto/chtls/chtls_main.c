@@ -483,7 +483,7 @@ static int chtls_getsockopt(struct sock *sk, int level, int optname,
 	struct tls_context *ctx = tls_get_ctx(sk);
 
 	if (level != SOL_TLS)
-		return ctx->sk_proto->getsockopt_iter(sk, level, optname, opt);
+		return ctx->sk_proto->getsockopt(sk, level, optname, opt);
 
 	return do_chtls_getsockopt(sk, opt);
 }
@@ -610,7 +610,7 @@ static void __init chtls_init_ulp_ops(void)
 	chtls_cpl_prot.splice_eof	= chtls_splice_eof;
 	chtls_cpl_prot.recvmsg		= chtls_recvmsg;
 	chtls_cpl_prot.setsockopt	= chtls_setsockopt;
-	chtls_cpl_prot.getsockopt_iter	= chtls_getsockopt;
+	chtls_cpl_prot.getsockopt = chtls_getsockopt;
 #if IS_ENABLED(CONFIG_IPV6)
 	chtls_cpl_protv6		= chtls_cpl_prot;
 	chtls_init_rsk_ops(&chtls_cpl_protv6, &chtls_rsk_opsv6,
