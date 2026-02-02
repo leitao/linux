@@ -29,6 +29,7 @@
 #include <linux/skbuff.h>
 #include <linux/compat.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <asm/ioctls.h>
 
 #include <net/net_namespace.h>
@@ -951,23 +952,20 @@ static int rawv6_seticmpfilter(struct sock *sk, int optname,
 	return 0;
 }
 
-static int rawv6_geticmpfilter(struct sock *sk, int optname,
-			       char __user *optval, int __user *optlen)
+static int rawv6_geticmpfilter(struct sock *sk, int optname, sockopt_t *opt)
 {
 	int len;
 
 	switch (optname) {
 	case ICMPV6_FILTER:
-		if (get_user(len, optlen))
-			return -EFAULT;
+		len = opt->optlen;
 		if (len < 0)
 			return -EINVAL;
 		if (len > sizeof(struct icmp6_filter))
 			len = sizeof(struct icmp6_filter);
-		if (put_user(len, optlen))
+		if (copy_to_iter(&raw6_sk(sk)->filter, len, &opt->iter) != len)
 			return -EFAULT;
-		if (copy_to_user(optval, &raw6_sk(sk)->filter, len))
-			return -EFAULT;
+		opt->optlen = len;
 		return 0;
 	default:
 		return -ENOPROTOOPT;
@@ -1051,13 +1049,12 @@ static int rawv6_setsockopt(struct sock *sk, int level, int optname,
 }
 
 static int do_rawv6_getsockopt(struct sock *sk, int level, int optname,
-			    char __user *optval, int __user *optlen)
+			       sockopt_t *opt)
 {
 	struct raw6_sock *rp = raw6_sk(sk);
 	int val, len;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	switch (optname) {
 	case IPV6_HDRINCL:
@@ -1081,16 +1078,20 @@ static int do_rawv6_getsockopt(struct sock *sk, int level, int optname,
 
 	len = min_t(unsigned int, sizeof(int), len);
 
-	if (put_user(len, optlen))
+	if (copy_to_iter(&val, len, &opt->iter) != len)
 		return -EFAULT;
-	if (copy_to_user(optval, &val, len))
-		return -EFAULT;
+	opt->optlen = len;
 	return 0;
 }
 
-static int rawv6_getsockopt(struct sock *sk, int level, int optname,
-			  char __user *optval, int __user *optlen)
+static int rawv6_getsockopt(struct socket *sock, int level, int optname,
+			    sockopt_t *opt)
 {
+	struct sock *sk = sock->sk;
+	int len = opt->optlen;
+	sockptr_t optval;
+	int err;
+
 	switch (level) {
 	case SOL_RAW:
 		break;
@@ -1098,17 +1099,25 @@ static int rawv6_getsockopt(struct sock *sk, int level, int optname,
 	case SOL_ICMPV6:
 		if (inet_sk(sk)->inet_num != IPPROTO_ICMPV6)
 			return -EOPNOTSUPP;
-		return rawv6_geticmpfilter(sk, optname, optval, optlen);
+		return rawv6_geticmpfilter(sk, optname, opt);
 	case SOL_IPV6:
 		if (optname == IPV6_CHECKSUM ||
 		    optname == IPV6_HDRINCL)
 			break;
 		fallthrough;
 	default:
-		return ipv6_getsockopt(sk, level, optname, optval, optlen);
+		if (iter_is_ubuf(&opt->iter))
+			optval = USER_SOCKPTR(opt->iter.ubuf);
+		else
+			optval = KERNEL_SOCKPTR(opt->iter.kvec->iov_base);
+		err = do_ipv6_getsockopt(sk, level, optname, optval,
+					 KERNEL_SOCKPTR(&len));
+		if (!err)
+			opt->optlen = len;
+		return err;
 	}
 
-	return do_rawv6_getsockopt(sk, level, optname, optval, optlen);
+	return do_rawv6_getsockopt(sk, level, optname, opt);
 }
 
 static int rawv6_ioctl(struct sock *sk, int cmd, int *karg)
@@ -1202,7 +1211,6 @@ struct proto rawv6_prot = {
 	.ioctl		   = rawv6_ioctl,
 	.init		   = rawv6_init_sk,
 	.setsockopt	   = rawv6_setsockopt,
-	.getsockopt	   = rawv6_getsockopt,
 	.sendmsg	   = rawv6_sendmsg,
 	.recvmsg	   = rawv6_recvmsg,
 	.bind		   = rawv6_bind,
@@ -1287,7 +1295,7 @@ const struct proto_ops inet6_sockraw_ops = {
 	.listen		   = sock_no_listen,		/* ok		*/
 	.shutdown	   = inet_shutdown,		/* ok		*/
 	.setsockopt	   = sock_common_setsockopt,	/* ok		*/
-	.getsockopt	   = sock_common_getsockopt,	/* ok		*/
+	.getsockopt_iter   = rawv6_getsockopt,
 	.sendmsg	   = inet_sendmsg,		/* ok		*/
 	.recvmsg	   = sock_common_recvmsg,	/* ok		*/
 	.mmap		   = sock_no_mmap,
