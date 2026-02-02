@@ -2439,7 +2439,6 @@ const struct inet_connection_sock_af_ops ipv4_specific = {
 	.syn_recv_sock	   = tcp_v4_syn_recv_sock,
 	.net_header_len	   = sizeof(struct iphdr),
 	.setsockopt	   = ip_setsockopt,
-	.getsockopt	   = ip_getsockopt,
 	.getsockopt_iter   = ip_getsockopt_iter,
 	.mtu_reduced	   = tcp_v4_mtu_reduced,
 };
