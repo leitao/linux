@@ -33,6 +33,7 @@
 #include <linux/skbuff.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/indirect_call_wrapper.h>
 #include <trace/events/udp.h>
 
@@ -1845,12 +1846,15 @@ int udpv6_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 	return ipv6_setsockopt(sk, level, optname, optval, optlen);
 }
 
-int udpv6_getsockopt(struct sock *sk, int level, int optname,
-		     char __user *optval, int __user *optlen)
+int udpv6_getsockopt(struct socket *sock, int level, int optname,
+		     sockopt_t *opt)
 {
+	struct sock *sk = sock->sk;
+
 	if (level == SOL_UDP  ||  level == SOL_UDPLITE)
-		return udp_lib_getsockopt(sk, level, optname, optval, optlen);
-	return ipv6_getsockopt(sk, level, optname, optval, optlen);
+		return udp_lib_getsockopt(sk, level, optname, opt);
+
+	return -ENOPROTOOPT;
 }
 
 
@@ -1911,7 +1915,6 @@ struct proto udpv6_prot = {
 	.init			= udpv6_init_sock,
 	.destroy		= udpv6_destroy_sock,
 	.setsockopt		= udpv6_setsockopt,
-	.getsockopt		= udpv6_getsockopt,
 	.sendmsg		= udpv6_sendmsg,
 	.recvmsg		= udpv6_recvmsg,
 	.splice_eof		= udpv6_splice_eof,

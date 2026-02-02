@@ -66,6 +66,8 @@
 #include <net/rawv6.h>
 #include <net/rps.h>
 
+#include "udp_impl.h"
+
 #include <linux/uaccess.h>
 #include <linux/mroute6.h>
 
@@ -732,7 +734,7 @@ const struct proto_ops inet6_dgram_ops = {
 	.listen		   = sock_no_listen,		/* ok		*/
 	.shutdown	   = inet_shutdown,		/* ok		*/
 	.setsockopt	   = sock_common_setsockopt,	/* ok		*/
-	.getsockopt	   = sock_common_getsockopt,	/* ok		*/
+	.getsockopt_iter   = udpv6_getsockopt,
 	.sendmsg	   = inet6_sendmsg,		/* retpoline's sake */
 	.recvmsg	   = inet6_recvmsg,		/* retpoline's sake */
 	.read_skb	   = udp_read_skb,
