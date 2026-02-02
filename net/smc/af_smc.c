@@ -27,6 +27,7 @@
 #include <linux/rcupdate_wait.h>
 #include <linux/ctype.h>
 #include <linux/splice.h>
+#include <linux/uio.h>
 
 #include <net/sock.h>
 #include <net/inet_common.h>
@@ -3005,15 +3006,14 @@ out:
 }
 
 static int __smc_getsockopt(struct socket *sock, int level, int optname,
-			    char __user *optval, int __user *optlen)
+			    sockopt_t *opt)
 {
 	struct smc_sock *smc;
 	int val, len;
 
 	smc = smc_sk(sock->sk);
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	len = min_t(int, len, sizeof(int));
 
@@ -3028,10 +3028,9 @@ static int __smc_getsockopt(struct socket *sock, int level, int optname,
 		return -EOPNOTSUPP;
 	}
 
-	if (put_user(len, optlen))
+	if (copy_to_iter(&val, len, &opt->iter) != len)
 		return -EFAULT;
-	if (copy_to_user(optval, &val, len))
-		return -EFAULT;
+	opt->optlen = len;
 
 	return 0;
 }
@@ -3157,13 +3156,13 @@ out:
 }
 
 int smc_getsockopt(struct socket *sock, int level, int optname,
-		   char __user *optval, int __user *optlen)
+		   sockopt_t *opt)
 {
 	struct smc_sock *smc;
 	int rc;
 
 	if (level == SOL_SMC)
-		return __smc_getsockopt(sock, level, optname, optval, optlen);
+		return __smc_getsockopt(sock, level, optname, opt);
 
 	smc = smc_sk(sock->sk);
 	mutex_lock(&smc->clcsock_release_lock);
@@ -3172,12 +3171,12 @@ int smc_getsockopt(struct socket *sock, int level, int optname,
 		return -EBADF;
 	}
 	/* socket options apply to the CLC socket */
-	if (unlikely(!smc->clcsock->ops->getsockopt)) {
+	if (unlikely(!smc->clcsock->ops->getsockopt_iter)) {
 		mutex_unlock(&smc->clcsock_release_lock);
 		return -EOPNOTSUPP;
 	}
-	rc = smc->clcsock->ops->getsockopt(smc->clcsock, level, optname,
-					   optval, optlen);
+	rc = smc->clcsock->ops->getsockopt_iter(smc->clcsock, level, optname,
+						opt);
 	mutex_unlock(&smc->clcsock_release_lock);
 	return rc;
 }
@@ -3330,7 +3329,7 @@ static const struct proto_ops smc_sock_ops = {
 	.listen		= smc_listen,
 	.shutdown	= smc_shutdown,
 	.setsockopt	= smc_setsockopt,
-	.getsockopt	= smc_getsockopt,
+	.getsockopt_iter = smc_getsockopt,
 	.sendmsg	= smc_sendmsg,
 	.recvmsg	= smc_recvmsg,
 	.mmap		= sock_no_mmap,
