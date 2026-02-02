@@ -1072,7 +1072,7 @@ const struct proto_ops inet_stream_ops = {
 	.listen		   = inet_listen,
 	.shutdown	   = inet_shutdown,
 	.setsockopt	   = sock_common_setsockopt,
-	.getsockopt	   = sock_common_getsockopt,
+	.getsockopt_iter   = sock_common_getsockopt_iter,
 	.sendmsg	   = inet_sendmsg,
 	.recvmsg	   = inet_recvmsg,
 #ifdef CONFIG_MMU

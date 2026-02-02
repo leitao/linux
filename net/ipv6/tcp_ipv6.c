@@ -2028,6 +2028,7 @@ const struct inet_connection_sock_af_ops ipv6_specific = {
 	.net_header_len	   = sizeof(struct ipv6hdr),
 	.setsockopt	   = ipv6_setsockopt,
 	.getsockopt	   = ipv6_getsockopt,
+	.getsockopt_iter   = ipv6_getsockopt_iter,
 	.mtu_reduced	   = tcp_v6_mtu_reduced,
 };
 
@@ -2302,7 +2303,7 @@ struct proto tcpv6_prot = {
 	.destroy		= tcp_v4_destroy_sock,
 	.shutdown		= tcp_shutdown,
 	.setsockopt		= tcp_setsockopt,
-	.getsockopt		= tcp_getsockopt,
+	.getsockopt_iter	= tcp_getsockopt,
 	.bpf_bypass_getsockopt	= tcp_bpf_bypass_getsockopt,
 	.keepalive		= tcp_set_keepalive,
 	.recvmsg		= tcp_recvmsg,

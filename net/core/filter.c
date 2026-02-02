@@ -49,6 +49,7 @@
 #include <linux/if_vlan.h>
 #include <linux/bpf.h>
 #include <linux/btf.h>
+#include <linux/uio.h>
 #include <net/sch_generic.h>
 #include <net/cls_cgroup.h>
 #include <net/dst_metadata.h>
@@ -5425,13 +5426,20 @@ static int sol_tcp_sockopt_congestion(struct sock *sk, char *optval,
 		return -EINVAL;
 
 	if (getopt) {
+		struct kvec kvec = { .iov_base = optval, .iov_len = *optlen };
+		sockopt_t opt;
+		int err;
+
 		if (!inet_csk(sk)->icsk_ca_ops)
 			return -EINVAL;
 		/* BPF expects NULL-terminated tcp-cc string */
 		optval[--(*optlen)] = '\0';
-		return do_tcp_getsockopt(sk, SOL_TCP, TCP_CONGESTION,
-					 KERNEL_SOCKPTR(optval),
-					 KERNEL_SOCKPTR(optlen));
+		iov_iter_kvec(&opt.iter, ITER_DEST, &kvec, 1, *optlen);
+		opt.optlen = *optlen;
+		err = do_tcp_getsockopt(sk, SOL_TCP, TCP_CONGESTION, &opt);
+		if (!err)
+			*optlen = opt.optlen;
+		return err;
 	}
 
 	/* "cdg" is the only cc that alloc a ptr
@@ -5504,6 +5512,10 @@ static int sol_tcp_sockopt(struct sock *sk, int optname,
 	}
 
 	if (getopt) {
+		struct kvec kvec = { .iov_base = optval, .iov_len = *optlen };
+		sockopt_t opt;
+		int err;
+
 		if (optname == TCP_SAVED_SYN) {
 			struct tcp_sock *tp = tcp_sk(sk);
 
@@ -5517,9 +5529,12 @@ static int sol_tcp_sockopt(struct sock *sk, int optname,
 			return 0;
 		}
 
-		return do_tcp_getsockopt(sk, SOL_TCP, optname,
-					 KERNEL_SOCKPTR(optval),
-					 KERNEL_SOCKPTR(optlen));
+		iov_iter_kvec(&opt.iter, ITER_DEST, &kvec, 1, *optlen);
+		opt.optlen = *optlen;
+		err = do_tcp_getsockopt(sk, SOL_TCP, optname, &opt);
+		if (!err)
+			*optlen = opt.optlen;
+		return err;
 	}
 
 	return do_tcp_setsockopt(sk, SOL_TCP, optname,
