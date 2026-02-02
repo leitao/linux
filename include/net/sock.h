@@ -59,6 +59,7 @@
 #include <linux/rculist_nulls.h>
 #include <linux/poll.h>
 #include <linux/sockptr.h>
+#include <linux/net.h>
 #include <linux/indirect_call_wrapper.h>
 #include <linux/atomic.h>
 #include <linux/refcount.h>
@@ -1300,6 +1301,8 @@ struct proto {
 	int			(*getsockopt)(struct sock *sk, int level,
 					int optname, char __user *optval,
 					int __user *option);
+	int			(*getsockopt_iter)(struct sock *sk, int level,
+					int optname, sockopt_t *opt);
 	void			(*keepalive)(struct sock *sk, int valbool);
 #ifdef CONFIG_COMPAT
 	int			(*compat_ioctl)(struct sock *sk,
@@ -1947,6 +1950,8 @@ int sock_no_mmap(struct file *file, struct socket *sock,
  */
 int sock_common_getsockopt(struct socket *sock, int level, int optname,
 				  char __user *optval, int __user *optlen);
+int sock_common_getsockopt_iter(struct socket *sock, int level, int optname,
+				sockopt_t *opt);
 int sock_common_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			int flags);
 int sock_common_setsockopt(struct socket *sock, int level, int optname,
