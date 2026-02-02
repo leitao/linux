@@ -46,6 +46,7 @@
 
 #include <linux/errqueue.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 
 /*
  *	SOL_IP control messages.
@@ -1783,3 +1784,51 @@ int ip_getsockopt(struct sock *sk, int level,
 	return err;
 }
 EXPORT_SYMBOL(ip_getsockopt);
+
+int ip_getsockopt_iter(struct sock *sk, int level, int optname, sockopt_t *opt)
+{
+	sockptr_t optval, optlen_ptr;
+	int koptlen = opt->optlen;
+	int err;
+
+	optlen_ptr = KERNEL_SOCKPTR(&koptlen);
+
+	if (iter_is_ubuf(&opt->iter)) {
+		optval = USER_SOCKPTR(opt->iter.ubuf + opt->iter.iov_offset);
+	} else if (iov_iter_is_kvec(&opt->iter)) {
+		const struct kvec *kvec = opt->iter.kvec;
+
+		optval = KERNEL_SOCKPTR(kvec->iov_base + opt->iter.iov_offset);
+	} else {
+		return -EOPNOTSUPP;
+	}
+
+	err = do_ip_getsockopt(sk, level, optname, optval, optlen_ptr);
+
+#ifdef CONFIG_NETFILTER
+	/* we need to exclude all possible ENOPROTOOPTs except default case */
+	if (err == -ENOPROTOOPT && optname != IP_PKTOPTIONS &&
+			!ip_mroute_opt(optname)) {
+		if (iter_is_ubuf(&opt->iter)) {
+			void __user *uoptval = opt->iter.ubuf + opt->iter.iov_offset;
+			int len = opt->optlen;
+
+			err = nf_getsockopt(sk, PF_INET, optname, uoptval, &len);
+			if (err >= 0) {
+				opt->optlen = len;
+				iov_iter_advance(&opt->iter, len);
+			}
+			return err;
+		}
+		/* netfilter getsockopt with kernel buffers not supported */
+		return -EOPNOTSUPP;
+	}
+#endif
+
+	if (!err) {
+		opt->optlen = koptlen;
+		iov_iter_advance(&opt->iter, koptlen);
+	}
+	return err;
+}
+EXPORT_SYMBOL(ip_getsockopt_iter);
