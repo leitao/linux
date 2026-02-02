@@ -28,6 +28,7 @@
 #include <net/net_namespace.h>
 #include <net/sock.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/fcntl.h>
 #include <linux/termios.h>	/* For TIOCINQ/OUTQ */
 #include <linux/mm.h>
@@ -346,7 +347,7 @@ static int nr_setsockopt(struct socket *sock, int level, int optname,
 }
 
 static int nr_getsockopt(struct socket *sock, int level, int optname,
-	char __user *optval, int __user *optlen)
+	sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	struct nr_sock *nr = nr_sk(sk);
@@ -356,8 +357,7 @@ static int nr_getsockopt(struct socket *sock, int level, int optname,
 	if (level != SOL_NETROM)
 		return -ENOPROTOOPT;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	if (len < 0)
 		return -EINVAL;
@@ -389,10 +389,11 @@ static int nr_getsockopt(struct socket *sock, int level, int optname,
 
 	len = min_t(unsigned int, len, sizeof(int));
 
-	if (put_user(len, optlen))
+	if (copy_to_iter(&val, len, &opt->iter) != len)
 		return -EFAULT;
 
-	return copy_to_user(optval, &val, len) ? -EFAULT : 0;
+	opt->optlen = len;
+	return 0;
 }
 
 static int nr_listen(struct socket *sock, int backlog)
@@ -1365,7 +1366,7 @@ static const struct proto_ops nr_proto_ops = {
 	.listen		=	nr_listen,
 	.shutdown	=	sock_no_shutdown,
 	.setsockopt	=	nr_setsockopt,
-	.getsockopt	=	nr_getsockopt,
+	.getsockopt_iter =	nr_getsockopt,
 	.sendmsg	=	nr_sendmsg,
 	.recvmsg	=	nr_recvmsg,
 	.mmap		=	sock_no_mmap,
