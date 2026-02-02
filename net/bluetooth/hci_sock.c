@@ -25,6 +25,7 @@
 /* Bluetooth HCI sockets. */
 #include <linux/compat.h>
 #include <linux/export.h>
+#include <linux/uio.h>
 #include <linux/utsname.h>
 #include <linux/sched.h>
 #include <linux/unaligned.h>
@@ -2063,16 +2064,15 @@ done:
 }
 
 static int hci_sock_getsockopt_old(struct socket *sock, int level, int optname,
-				   char __user *optval, int __user *optlen)
+				   sockopt_t *opt)
 {
 	struct hci_ufilter uf;
 	struct sock *sk = sock->sk;
-	int len, opt, err = 0;
+	int len, val, err = 0;
 
 	BT_DBG("sk %p, opt %d", sk, optname);
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	lock_sock(sk);
 
@@ -2084,21 +2084,21 @@ static int hci_sock_getsockopt_old(struct socket *sock, int level, int optname,
 	switch (optname) {
 	case HCI_DATA_DIR:
 		if (hci_pi(sk)->cmsg_mask & HCI_CMSG_DIR)
-			opt = 1;
+			val = 1;
 		else
-			opt = 0;
+			val = 0;
 
-		if (put_user(opt, optval))
+		if (copy_to_iter(&val, sizeof(val), &opt->iter) != sizeof(val))
 			err = -EFAULT;
 		break;
 
 	case HCI_TIME_STAMP:
 		if (hci_pi(sk)->cmsg_mask & HCI_CMSG_TSTAMP)
-			opt = 1;
+			val = 1;
 		else
-			opt = 0;
+			val = 0;
 
-		if (put_user(opt, optval))
+		if (copy_to_iter(&val, sizeof(val), &opt->iter) != sizeof(val))
 			err = -EFAULT;
 		break;
 
@@ -2114,8 +2114,10 @@ static int hci_sock_getsockopt_old(struct socket *sock, int level, int optname,
 		}
 
 		len = min_t(unsigned int, len, sizeof(uf));
-		if (copy_to_user(optval, &uf, len))
+		if (copy_to_iter(&uf, len, &opt->iter) != len)
 			err = -EFAULT;
+		else
+			opt->optlen = len;
 		break;
 
 	default:
@@ -2129,16 +2131,16 @@ done:
 }
 
 static int hci_sock_getsockopt(struct socket *sock, int level, int optname,
-			       char __user *optval, int __user *optlen)
+			       sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	int err = 0;
+	u16 mtu;
 
 	BT_DBG("sk %p, opt %d", sk, optname);
 
 	if (level == SOL_HCI)
-		return hci_sock_getsockopt_old(sock, level, optname, optval,
-					       optlen);
+		return hci_sock_getsockopt_old(sock, level, optname, opt);
 
 	if (level != SOL_BLUETOOTH)
 		return -ENOPROTOOPT;
@@ -2148,7 +2150,8 @@ static int hci_sock_getsockopt(struct socket *sock, int level, int optname,
 	switch (optname) {
 	case BT_SNDMTU:
 	case BT_RCVMTU:
-		if (put_user(hci_pi(sk)->mtu, (u16 __user *)optval))
+		mtu = hci_pi(sk)->mtu;
+		if (copy_to_iter(&mtu, sizeof(mtu), &opt->iter) != sizeof(mtu))
 			err = -EFAULT;
 		break;
 
@@ -2184,7 +2187,7 @@ static const struct proto_ops hci_sock_ops = {
 	.listen		= sock_no_listen,
 	.shutdown	= sock_no_shutdown,
 	.setsockopt	= hci_sock_setsockopt,
-	.getsockopt	= hci_sock_getsockopt,
+	.getsockopt_iter = hci_sock_getsockopt,
 	.connect	= sock_no_connect,
 	.socketpair	= sock_no_socketpair,
 	.accept		= sock_no_accept,
