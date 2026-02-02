@@ -76,6 +76,7 @@
 
 #include <linux/bpf-cgroup.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <asm/ioctls.h>
 #include <linux/memblock.h>
 #include <linux/highmem.h>
@@ -3112,13 +3113,12 @@ int udp_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 }
 
 int udp_lib_getsockopt(struct sock *sk, int level, int optname,
-		       char __user *optval, int __user *optlen)
+		       sockopt_t *opt)
 {
 	struct udp_sock *up = udp_sk(sk);
 	int val, len;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	if (len < 0)
 		return -EINVAL;
@@ -3164,20 +3164,19 @@ int udp_lib_getsockopt(struct sock *sk, int level, int optname,
 		return -ENOPROTOOPT;
 	}
 
-	if (put_user(len, optlen))
+	if (copy_to_iter(&val, len, &opt->iter) != len)
 		return -EFAULT;
-	if (copy_to_user(optval, &val, len))
-		return -EFAULT;
+	opt->optlen = len;
 	return 0;
 }
 EXPORT_IPV6_MOD(udp_lib_getsockopt);
 
 int udp_getsockopt(struct sock *sk, int level, int optname,
-		   char __user *optval, int __user *optlen)
+		   sockopt_t *opt)
 {
 	if (level == SOL_UDP  ||  level == SOL_UDPLITE)
-		return udp_lib_getsockopt(sk, level, optname, optval, optlen);
-	return ip_getsockopt(sk, level, optname, optval, optlen);
+		return udp_lib_getsockopt(sk, level, optname, opt);
+	return ip_getsockopt_iter(sk, level, optname, opt);
 }
 
 /**
@@ -3248,7 +3247,7 @@ struct proto udp_prot = {
 	.init			= udp_init_sock,
 	.destroy		= udp_destroy_sock,
 	.setsockopt		= udp_setsockopt,
-	.getsockopt		= udp_getsockopt,
+	.getsockopt_iter	= udp_getsockopt,
 	.sendmsg		= udp_sendmsg,
 	.recvmsg		= udp_recvmsg,
 	.splice_eof		= udp_splice_eof,
