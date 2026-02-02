@@ -47,6 +47,7 @@
 #include <net/sock.h>
 #include <net/tcp_states.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/fcntl.h>
 #include <linux/termios.h>	/* For TIOCINQ/OUTQ */
 #include <linux/notifier.h>
@@ -448,7 +449,7 @@ out:
 }
 
 static int x25_getsockopt(struct socket *sock, int level, int optname,
-			  char __user *optval, int __user *optlen)
+			  sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	int val, len, rc = -ENOPROTOOPT;
@@ -456,9 +457,7 @@ static int x25_getsockopt(struct socket *sock, int level, int optname,
 	if (level != SOL_X25 || optname != X25_QBITINCL)
 		goto out;
 
-	rc = -EFAULT;
-	if (get_user(len, optlen))
-		goto out;
+	len = opt->optlen;
 
 	rc = -EINVAL;
 	if (len < 0)
@@ -466,12 +465,12 @@ static int x25_getsockopt(struct socket *sock, int level, int optname,
 
 	len = min_t(unsigned int, len, sizeof(int));
 
-	rc = -EFAULT;
-	if (put_user(len, optlen))
-		goto out;
-
 	val = test_bit(X25_Q_BIT_FLAG, &x25_sk(sk)->flags);
-	rc = copy_to_user(optval, &val, len) ? -EFAULT : 0;
+	rc = -EFAULT;
+	if (copy_to_iter(&val, len, &opt->iter) != len)
+		goto out;
+	opt->optlen = len;
+	rc = 0;
 out:
 	return rc;
 }
@@ -1753,7 +1752,7 @@ static const struct proto_ops x25_proto_ops = {
 	.listen =	x25_listen,
 	.shutdown =	sock_no_shutdown,
 	.setsockopt =	x25_setsockopt,
-	.getsockopt =	x25_getsockopt,
+	.getsockopt_iter =	x25_getsockopt,
 	.sendmsg =	x25_sendmsg,
 	.recvmsg =	x25_recvmsg,
 	.mmap =		sock_no_mmap,
