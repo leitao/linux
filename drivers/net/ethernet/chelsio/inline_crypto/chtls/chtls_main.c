@@ -13,6 +13,7 @@
 #include <linux/net.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
+#include <linux/uio.h>
 #include <net/ipv6.h>
 #include <net/transp_v6.h>
 #include <net/tcp.h>
@@ -465,27 +466,26 @@ nomem:
 	return -ENOMEM;
 }
 
-static int do_chtls_getsockopt(struct sock *sk, char __user *optval,
-			       int __user *optlen)
+static int do_chtls_getsockopt(struct sock *sk, sockopt_t *opt)
 {
 	struct tls_crypto_info crypto_info = { 0 };
 
 	crypto_info.version = TLS_1_2_VERSION;
-	if (copy_to_user(optval, &crypto_info, sizeof(struct tls_crypto_info)))
+	if (copy_to_iter(&crypto_info, sizeof(struct tls_crypto_info),
+			 &opt->iter) != sizeof(struct tls_crypto_info))
 		return -EFAULT;
 	return 0;
 }
 
 static int chtls_getsockopt(struct sock *sk, int level, int optname,
-			    char __user *optval, int __user *optlen)
+			    sockopt_t *opt)
 {
 	struct tls_context *ctx = tls_get_ctx(sk);
 
 	if (level != SOL_TLS)
-		return ctx->sk_proto->getsockopt(sk, level,
-						 optname, optval, optlen);
+		return ctx->sk_proto->getsockopt_iter(sk, level, optname, opt);
 
-	return do_chtls_getsockopt(sk, optval, optlen);
+	return do_chtls_getsockopt(sk, opt);
 }
 
 static int do_chtls_setsockopt(struct sock *sk, int optname,
@@ -610,7 +610,7 @@ static void __init chtls_init_ulp_ops(void)
 	chtls_cpl_prot.splice_eof	= chtls_splice_eof;
 	chtls_cpl_prot.recvmsg		= chtls_recvmsg;
 	chtls_cpl_prot.setsockopt	= chtls_setsockopt;
-	chtls_cpl_prot.getsockopt	= chtls_getsockopt;
+	chtls_cpl_prot.getsockopt_iter	= chtls_getsockopt;
 #if IS_ENABLED(CONFIG_IPV6)
 	chtls_cpl_protv6		= chtls_cpl_prot;
 	chtls_init_rsk_ops(&chtls_cpl_protv6, &chtls_rsk_opsv6,
