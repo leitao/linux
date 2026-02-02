@@ -9,6 +9,7 @@
 #include <linux/mISDNif.h>
 #include <linux/slab.h>
 #include <linux/export.h>
+#include <linux/uio.h>
 #include "core.h"
 
 static u_int	*debug;
@@ -433,13 +434,13 @@ static int data_sock_setsockopt(struct socket *sock, int level, int optname,
 }
 
 static int data_sock_getsockopt(struct socket *sock, int level, int optname,
-				char __user *optval, int __user *optlen)
+				sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
-	int len, opt;
+	int len;
+	char optval;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	if (len != sizeof(char))
 		return -EINVAL;
@@ -447,11 +448,11 @@ static int data_sock_getsockopt(struct socket *sock, int level, int optname,
 	switch (optname) {
 	case MISDN_TIME_STAMP:
 		if (_pms(sk)->cmask & MISDN_TIME_STAMP)
-			opt = 1;
+			optval = 1;
 		else
-			opt = 0;
+			optval = 0;
 
-		if (put_user(opt, optval))
+		if (copy_to_iter(&optval, len, &opt->iter) != len)
 			return -EFAULT;
 		break;
 	default:
@@ -582,7 +583,7 @@ static const struct proto_ops data_sock_ops = {
 	.listen		= sock_no_listen,
 	.shutdown	= sock_no_shutdown,
 	.setsockopt	= data_sock_setsockopt,
-	.getsockopt	= data_sock_getsockopt,
+	.getsockopt_iter = data_sock_getsockopt,
 	.connect	= sock_no_connect,
 	.socketpair	= sock_no_socketpair,
 	.accept		= sock_no_accept,
