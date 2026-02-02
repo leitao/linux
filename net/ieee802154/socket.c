@@ -18,6 +18,7 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/socket.h>
+#include <linux/uio.h>
 #include <net/datalink.h>
 #include <net/psnap.h>
 #include <net/sock.h>
@@ -379,8 +380,8 @@ static void ieee802154_raw_deliver(struct net_device *dev, struct sk_buff *skb)
 	read_unlock(&raw_lock);
 }
 
-static int raw_getsockopt(struct sock *sk, int level, int optname,
-			  char __user *optval, int __user *optlen)
+static int raw_getsockopt(struct socket *sock, int level, int optname,
+			  sockopt_t *opt)
 {
 	return -EOPNOTSUPP;
 }
@@ -403,7 +404,6 @@ static struct proto ieee802154_raw_prot = {
 	.unhash		= raw_unhash,
 	.connect	= raw_connect,
 	.disconnect	= raw_disconnect,
-	.getsockopt	= raw_getsockopt,
 	.setsockopt	= raw_setsockopt,
 };
 
@@ -422,7 +422,7 @@ static const struct proto_ops ieee802154_raw_ops = {
 	.listen		   = sock_no_listen,
 	.shutdown	   = sock_no_shutdown,
 	.setsockopt	   = sock_common_setsockopt,
-	.getsockopt	   = sock_common_getsockopt,
+	.getsockopt_iter   = raw_getsockopt,
 	.sendmsg	   = ieee802154_sock_sendmsg,
 	.recvmsg	   = sock_common_recvmsg,
 	.mmap		   = sock_no_mmap,
@@ -831,18 +831,17 @@ static int ieee802154_dgram_deliver(struct net_device *dev, struct sk_buff *skb)
 	return ret;
 }
 
-static int dgram_getsockopt(struct sock *sk, int level, int optname,
-			    char __user *optval, int __user *optlen)
+static int dgram_getsockopt(struct socket *sock, int level, int optname,
+			    sockopt_t *opt)
 {
+	struct sock *sk = sock->sk;
 	struct dgram_sock *ro = dgram_sk(sk);
-
 	int val, len;
 
 	if (level != SOL_IEEE802154)
 		return -EOPNOTSUPP;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	len = min_t(unsigned int, len, sizeof(int));
 
@@ -871,10 +870,9 @@ static int dgram_getsockopt(struct sock *sk, int level, int optname,
 		return -ENOPROTOOPT;
 	}
 
-	if (put_user(len, optlen))
+	if (copy_to_iter(&val, len, &opt->iter) != len)
 		return -EFAULT;
-	if (copy_to_user(optval, &val, len))
-		return -EFAULT;
+	opt->optlen = len;
 	return 0;
 }
 
@@ -965,7 +963,6 @@ static struct proto ieee802154_dgram_prot = {
 	.connect	= dgram_connect,
 	.disconnect	= dgram_disconnect,
 	.ioctl		= dgram_ioctl,
-	.getsockopt	= dgram_getsockopt,
 	.setsockopt	= dgram_setsockopt,
 };
 
@@ -984,7 +981,7 @@ static const struct proto_ops ieee802154_dgram_ops = {
 	.listen		   = sock_no_listen,
 	.shutdown	   = sock_no_shutdown,
 	.setsockopt	   = sock_common_setsockopt,
-	.getsockopt	   = sock_common_getsockopt,
+	.getsockopt_iter   = dgram_getsockopt,
 	.sendmsg	   = ieee802154_sock_sendmsg,
 	.recvmsg	   = sock_common_recvmsg,
 	.mmap		   = sock_no_mmap,
