@@ -13,6 +13,7 @@
 #include <linux/sched/signal.h>
 #include <linux/slab.h>
 #include <linux/socket.h>
+#include <linux/uio.h>
 #include <net/sock.h>
 #include <net/tcp_states.h>
 #include <asm/ioctls.h>
@@ -1063,16 +1064,17 @@ out_norel:
 	return err;
 }
 
-static int pep_getsockopt(struct sock *sk, int level, int optname,
-				char __user *optval, int __user *optlen)
+int pep_getsockopt(struct socket *sock, int level, int optname,
+		   sockopt_t *opt)
 {
+	struct sock *sk = sock->sk;
 	struct pep_sock *pn = pep_sk(sk);
 	int len, val;
 
 	if (level != SOL_PNPIPE)
 		return -ENOPROTOOPT;
-	if (get_user(len, optlen))
-		return -EFAULT;
+
+	len = opt->optlen;
 
 	switch (optname) {
 	case PNPIPE_ENCAP:
@@ -1098,10 +1100,9 @@ static int pep_getsockopt(struct sock *sk, int level, int optname,
 	}
 
 	len = min_t(unsigned int, sizeof(int), len);
-	if (put_user(len, optlen))
+	if (copy_to_iter(&val, len, &opt->iter) != len)
 		return -EFAULT;
-	if (put_user(val, (int __user *) optval))
-		return -EFAULT;
+	opt->optlen = len;
 	return 0;
 }
 
@@ -1353,7 +1354,6 @@ static struct proto pep_proto = {
 	.ioctl		= pep_ioctl,
 	.init		= pep_init,
 	.setsockopt	= pep_setsockopt,
-	.getsockopt	= pep_getsockopt,
 	.sendmsg	= pep_sendmsg,
 	.recvmsg	= pep_recvmsg,
 	.backlog_rcv	= pep_do_rcv,

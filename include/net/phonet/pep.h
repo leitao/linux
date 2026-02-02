@@ -10,6 +10,7 @@
 #ifndef NET_PHONET_PEP_H
 #define NET_PHONET_PEP_H
 
+#include <linux/net.h>
 #include <linux/skbuff.h>
 #include <net/phonet/phonet.h>
 
@@ -42,6 +43,9 @@ static inline struct pep_sock *pep_sk(struct sock *sk)
 }
 
 extern const struct proto_ops phonet_stream_ops;
+
+int pep_getsockopt(struct socket *sock, int level, int optname,
+		   sockopt_t *opt);
 
 /* Pipe protocol definitions */
 struct pnpipehdr {
