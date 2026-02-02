@@ -28,6 +28,7 @@
 #include <linux/export.h>
 #include <linux/debugfs.h>
 #include <linux/sched/signal.h>
+#include <linux/uio.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
@@ -723,20 +724,18 @@ static int rfcomm_sock_setsockopt(struct socket *sock, int level, int optname,
 	return err;
 }
 
-static int rfcomm_sock_getsockopt_old(struct socket *sock, int optname, char __user *optval, int __user *optlen)
+static int rfcomm_sock_getsockopt_old(struct socket *sock, int optname,
+				      sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	struct sock *l2cap_sk;
 	struct l2cap_conn *conn;
 	struct rfcomm_conninfo cinfo;
 	int err = 0;
-	size_t len;
-	u32 opt;
+	size_t len = opt->optlen;
+	u32 opt_val;
 
 	BT_DBG("sk %p", sk);
-
-	if (get_user(len, optlen))
-		return -EFAULT;
 
 	lock_sock(sk);
 
@@ -744,28 +743,29 @@ static int rfcomm_sock_getsockopt_old(struct socket *sock, int optname, char __u
 	case RFCOMM_LM:
 		switch (rfcomm_pi(sk)->sec_level) {
 		case BT_SECURITY_LOW:
-			opt = RFCOMM_LM_AUTH;
+			opt_val = RFCOMM_LM_AUTH;
 			break;
 		case BT_SECURITY_MEDIUM:
-			opt = RFCOMM_LM_AUTH | RFCOMM_LM_ENCRYPT;
+			opt_val = RFCOMM_LM_AUTH | RFCOMM_LM_ENCRYPT;
 			break;
 		case BT_SECURITY_HIGH:
-			opt = RFCOMM_LM_AUTH | RFCOMM_LM_ENCRYPT |
+			opt_val = RFCOMM_LM_AUTH | RFCOMM_LM_ENCRYPT |
 			      RFCOMM_LM_SECURE;
 			break;
 		case BT_SECURITY_FIPS:
-			opt = RFCOMM_LM_AUTH | RFCOMM_LM_ENCRYPT |
+			opt_val = RFCOMM_LM_AUTH | RFCOMM_LM_ENCRYPT |
 			      RFCOMM_LM_SECURE | RFCOMM_LM_FIPS;
 			break;
 		default:
-			opt = 0;
+			opt_val = 0;
 			break;
 		}
 
 		if (rfcomm_pi(sk)->role_switch)
-			opt |= RFCOMM_LM_MASTER;
+			opt_val |= RFCOMM_LM_MASTER;
 
-		if (put_user(opt, (u32 __user *) optval))
+		len = min(len, sizeof(opt_val));
+		if (copy_to_iter(&opt_val, len, &opt->iter) != len)
 			err = -EFAULT;
 
 		break;
@@ -785,7 +785,7 @@ static int rfcomm_sock_getsockopt_old(struct socket *sock, int optname, char __u
 		memcpy(cinfo.dev_class, conn->hcon->dev_class, 3);
 
 		len = min(len, sizeof(cinfo));
-		if (copy_to_user(optval, (char *) &cinfo, len))
+		if (copy_to_iter(&cinfo, len, &opt->iter) != len)
 			err = -EFAULT;
 
 		break;
@@ -799,23 +799,21 @@ static int rfcomm_sock_getsockopt_old(struct socket *sock, int optname, char __u
 	return err;
 }
 
-static int rfcomm_sock_getsockopt(struct socket *sock, int level, int optname, char __user *optval, int __user *optlen)
+static int rfcomm_sock_getsockopt(struct socket *sock, int level, int optname,
+				  sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	struct bt_security sec;
 	int err = 0;
-	size_t len;
+	size_t len = opt->optlen;
 
 	BT_DBG("sk %p", sk);
 
 	if (level == SOL_RFCOMM)
-		return rfcomm_sock_getsockopt_old(sock, optname, optval, optlen);
+		return rfcomm_sock_getsockopt_old(sock, optname, opt);
 
 	if (level != SOL_BLUETOOTH)
 		return -ENOPROTOOPT;
-
-	if (get_user(len, optlen))
-		return -EFAULT;
 
 	lock_sock(sk);
 
@@ -830,7 +828,7 @@ static int rfcomm_sock_getsockopt(struct socket *sock, int level, int optname, c
 		sec.key_size = 0;
 
 		len = min(len, sizeof(sec));
-		if (copy_to_user(optval, (char *) &sec, len))
+		if (copy_to_iter(&sec, len, &opt->iter) != len)
 			err = -EFAULT;
 
 		break;
@@ -841,9 +839,13 @@ static int rfcomm_sock_getsockopt(struct socket *sock, int level, int optname, c
 			break;
 		}
 
-		if (put_user(test_bit(BT_SK_DEFER_SETUP, &bt_sk(sk)->flags),
-			     (u32 __user *) optval))
-			err = -EFAULT;
+		{
+			u32 defer_val = test_bit(BT_SK_DEFER_SETUP, &bt_sk(sk)->flags);
+
+			len = min(len, sizeof(defer_val));
+			if (copy_to_iter(&defer_val, len, &opt->iter) != len)
+				err = -EFAULT;
+		}
 
 		break;
 
@@ -1014,7 +1016,7 @@ static const struct proto_ops rfcomm_sock_ops = {
 	.recvmsg	= rfcomm_sock_recvmsg,
 	.shutdown	= rfcomm_sock_shutdown,
 	.setsockopt	= rfcomm_sock_setsockopt,
-	.getsockopt	= rfcomm_sock_getsockopt,
+	.getsockopt_iter = rfcomm_sock_getsockopt,
 	.ioctl		= rfcomm_sock_ioctl,
 	.gettstamp	= sock_gettstamp,
 	.poll		= bt_sock_poll,
