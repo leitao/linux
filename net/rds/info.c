@@ -35,6 +35,7 @@
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
 #include <linux/export.h>
+#include <linux/uio.h>
 
 #include "rds.h"
 
@@ -144,10 +145,10 @@ void rds_info_copy(struct rds_info_iterator *iter, void *data,
 EXPORT_SYMBOL_GPL(rds_info_copy);
 
 /*
- * @optval points to the userspace buffer that the information snapshot
+ * @opt->iter contains the userspace buffer that the information snapshot
  * will be copied into.
  *
- * @optlen on input is the size of the buffer in userspace.  @optlen
+ * @opt->optlen on input is the size of the buffer in userspace.  @opt->optlen
  * on output is the size of the requested snapshot in bytes.
  *
  * This function returns -errno if there is a failure, particularly -ENOSPC
@@ -155,8 +156,7 @@ EXPORT_SYMBOL_GPL(rds_info_copy);
  * On success it returns the positive number of bytes of each array element
  * in the snapshot.
  */
-int rds_info_getsockopt(struct socket *sock, int optname, char __user *optval,
-			int __user *optlen)
+int rds_info_getsockopt(struct socket *sock, int optname, sockopt_t *opt)
 {
 	struct rds_info_iterator iter;
 	struct rds_info_lengths lens;
@@ -168,13 +168,10 @@ int rds_info_getsockopt(struct socket *sock, int optname, char __user *optval,
 	int len;
 	int total;
 
-	if (get_user(len, optlen)) {
-		ret = -EFAULT;
-		goto out;
-	}
+	len = opt->optlen;
 
 	/* check for all kinds of wrapping and the like */
-	start = (unsigned long)optval;
+	start = (unsigned long)iter_iov_addr(&opt->iter);
 	if (len < 0 || len > INT_MAX - PAGE_SIZE + 1 || start + len < start) {
 		ret = -EINVAL;
 		goto out;
@@ -230,8 +227,7 @@ call_func:
 		ret = lens.each;
 	}
 
-	if (put_user(len, optlen))
-		ret = -EFAULT;
+	opt->optlen = len;
 
 out:
 	if (pages)
