@@ -8,6 +8,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/uio.h>
 #include <net/sock.h>
 #include <net/protocol.h>
 #include <net/tcp.h>
@@ -928,7 +929,7 @@ int mptcp_setsockopt(struct sock *sk, int level, int optname,
 }
 
 static int mptcp_getsockopt_first_sf_only(struct mptcp_sock *msk, int level, int optname,
-					  char __user *optval, int __user *optlen)
+					  sockopt_t *opt)
 {
 	struct sock *sk = (struct sock *)msk;
 	struct sock *ssk;
@@ -946,7 +947,7 @@ static int mptcp_getsockopt_first_sf_only(struct mptcp_sock *msk, int level, int
 	}
 
 get:
-	ret = tcp_getsockopt(ssk, level, optname, optval, optlen);
+	ret = tcp_getsockopt(ssk, level, optname, opt);
 
 out:
 	release_sock(sk);
@@ -1016,13 +1017,12 @@ void mptcp_diag_fill_info(struct mptcp_sock *msk, struct mptcp_info *info)
 }
 EXPORT_SYMBOL_GPL(mptcp_diag_fill_info);
 
-static int mptcp_getsockopt_info(struct mptcp_sock *msk, char __user *optval, int __user *optlen)
+static int mptcp_getsockopt_info(struct mptcp_sock *msk, sockopt_t *opt)
 {
 	struct mptcp_info m_info;
 	int len;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	/* When used only to check if a fallback to TCP happened. */
 	if (len == 0)
@@ -1032,19 +1032,16 @@ static int mptcp_getsockopt_info(struct mptcp_sock *msk, char __user *optval, in
 
 	mptcp_diag_fill_info(msk, &m_info);
 
-	if (put_user(len, optlen))
+	if (copy_to_iter(&m_info, len, &opt->iter) != len)
 		return -EFAULT;
-
-	if (copy_to_user(optval, &m_info, len))
-		return -EFAULT;
+	opt->optlen = len;
 
 	return 0;
 }
 
 static int mptcp_put_subflow_data(struct mptcp_subflow_data *sfd,
-				  char __user *optval,
-				  u32 copied,
-				  int __user *optlen)
+				  sockopt_t *opt,
+				  u32 copied)
 {
 	u32 copylen = min_t(u32, sfd->size_subflow_data, sizeof(*sfd));
 
@@ -1053,23 +1050,20 @@ static int mptcp_put_subflow_data(struct mptcp_subflow_data *sfd,
 	else
 		copied = copylen;
 
-	if (put_user(copied, optlen))
-		return -EFAULT;
+	opt->optlen = copied;
 
-	if (copy_to_user(optval, sfd, copylen))
+	if (copy_to_iter(sfd, copylen, &opt->iter) != copylen)
 		return -EFAULT;
 
 	return 0;
 }
 
 static int mptcp_get_subflow_data(struct mptcp_subflow_data *sfd,
-				  char __user *optval,
-				  int __user *optlen)
+				  sockopt_t *opt)
 {
 	int len, copylen;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	/* if mptcp_subflow_data size is changed, need to adjust
 	 * this function to deal with programs using old version.
@@ -1082,8 +1076,9 @@ static int mptcp_get_subflow_data(struct mptcp_subflow_data *sfd,
 	memset(sfd, 0, sizeof(*sfd));
 
 	copylen = min_t(unsigned int, len, sizeof(*sfd));
-	if (copy_from_user(sfd, optval, copylen))
+	if (copy_from_iter(sfd, copylen, &opt->iter) != copylen)
 		return -EFAULT;
+	iov_iter_revert(&opt->iter, copylen);
 
 	/* size_subflow_data is u32, but len is signed */
 	if (sfd->size_subflow_data > INT_MAX ||
@@ -1100,17 +1095,15 @@ static int mptcp_get_subflow_data(struct mptcp_subflow_data *sfd,
 	return len - sfd->size_subflow_data;
 }
 
-static int mptcp_getsockopt_tcpinfo(struct mptcp_sock *msk, char __user *optval,
-				    int __user *optlen)
+static int mptcp_getsockopt_tcpinfo(struct mptcp_sock *msk, sockopt_t *opt)
 {
 	struct mptcp_subflow_context *subflow;
 	struct sock *sk = (struct sock *)msk;
 	unsigned int sfcount = 0, copied = 0;
 	struct mptcp_subflow_data sfd;
-	char __user *infoptr;
 	int len;
 
-	len = mptcp_get_subflow_data(&sfd, optval, optlen);
+	len = mptcp_get_subflow_data(&sfd, opt);
 	if (len < 0)
 		return len;
 
@@ -1118,7 +1111,8 @@ static int mptcp_getsockopt_tcpinfo(struct mptcp_sock *msk, char __user *optval,
 	sfd.size_user = min_t(unsigned int, sfd.size_user,
 			      sizeof(struct tcp_info));
 
-	infoptr = optval + sfd.size_subflow_data;
+	/* Advance past the subflow_data header */
+	iov_iter_advance(&opt->iter, sfd.size_subflow_data);
 
 	lock_sock(sk);
 
@@ -1132,12 +1126,11 @@ static int mptcp_getsockopt_tcpinfo(struct mptcp_sock *msk, char __user *optval,
 
 			tcp_get_info(ssk, &info);
 
-			if (copy_to_user(infoptr, &info, sfd.size_user)) {
+			if (copy_to_iter(&info, sfd.size_user, &opt->iter) != sfd.size_user) {
 				release_sock(sk);
 				return -EFAULT;
 			}
 
-			infoptr += sfd.size_user;
 			copied += sfd.size_user;
 			len -= sfd.size_user;
 		}
@@ -1147,7 +1140,10 @@ static int mptcp_getsockopt_tcpinfo(struct mptcp_sock *msk, char __user *optval,
 
 	sfd.num_subflows = sfcount;
 
-	if (mptcp_put_subflow_data(&sfd, optval, copied, optlen))
+	/* Revert back to beginning to write the header */
+	iov_iter_revert(&opt->iter, sfd.size_subflow_data + copied);
+
+	if (mptcp_put_subflow_data(&sfd, opt, copied))
 		return -EFAULT;
 
 	return 0;
@@ -1192,17 +1188,15 @@ static void mptcp_get_sub_addrs(const struct sock *sk, struct mptcp_subflow_addr
 	}
 }
 
-static int mptcp_getsockopt_subflow_addrs(struct mptcp_sock *msk, char __user *optval,
-					  int __user *optlen)
+static int mptcp_getsockopt_subflow_addrs(struct mptcp_sock *msk, sockopt_t *opt)
 {
 	struct mptcp_subflow_context *subflow;
 	struct sock *sk = (struct sock *)msk;
 	unsigned int sfcount = 0, copied = 0;
 	struct mptcp_subflow_data sfd;
-	char __user *addrptr;
 	int len;
 
-	len = mptcp_get_subflow_data(&sfd, optval, optlen);
+	len = mptcp_get_subflow_data(&sfd, opt);
 	if (len < 0)
 		return len;
 
@@ -1210,7 +1204,8 @@ static int mptcp_getsockopt_subflow_addrs(struct mptcp_sock *msk, char __user *o
 	sfd.size_user = min_t(unsigned int, sfd.size_user,
 			      sizeof(struct mptcp_subflow_addrs));
 
-	addrptr = optval + sfd.size_subflow_data;
+	/* Advance past the subflow_data header */
+	iov_iter_advance(&opt->iter, sfd.size_subflow_data);
 
 	lock_sock(sk);
 
@@ -1224,12 +1219,11 @@ static int mptcp_getsockopt_subflow_addrs(struct mptcp_sock *msk, char __user *o
 
 			mptcp_get_sub_addrs(ssk, &a);
 
-			if (copy_to_user(addrptr, &a, sfd.size_user)) {
+			if (copy_to_iter(&a, sfd.size_user, &opt->iter) != sfd.size_user) {
 				release_sock(sk);
 				return -EFAULT;
 			}
 
-			addrptr += sfd.size_user;
 			copied += sfd.size_user;
 			len -= sfd.size_user;
 		}
@@ -1239,30 +1233,33 @@ static int mptcp_getsockopt_subflow_addrs(struct mptcp_sock *msk, char __user *o
 
 	sfd.num_subflows = sfcount;
 
-	if (mptcp_put_subflow_data(&sfd, optval, copied, optlen))
+	/* Revert back to beginning to write the header */
+	iov_iter_revert(&opt->iter, sfd.size_subflow_data + copied);
+
+	if (mptcp_put_subflow_data(&sfd, opt, copied))
 		return -EFAULT;
 
 	return 0;
 }
 
 static int mptcp_get_full_info(struct mptcp_full_info *mfi,
-			       char __user *optval,
-			       int __user *optlen)
+			       sockopt_t *opt)
 {
 	int len;
 
 	BUILD_BUG_ON(offsetof(struct mptcp_full_info, mptcp_info) !=
 		     MIN_FULL_INFO_OPTLEN_SIZE);
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	if (len < MIN_FULL_INFO_OPTLEN_SIZE)
 		return -EINVAL;
 
 	memset(mfi, 0, sizeof(*mfi));
-	if (copy_from_user(mfi, optval, MIN_FULL_INFO_OPTLEN_SIZE))
+	if (copy_from_iter(mfi, MIN_FULL_INFO_OPTLEN_SIZE, &opt->iter) !=
+	    MIN_FULL_INFO_OPTLEN_SIZE)
 		return -EFAULT;
+	iov_iter_revert(&opt->iter, MIN_FULL_INFO_OPTLEN_SIZE);
 
 	if (mfi->size_tcpinfo_kernel ||
 	    mfi->size_sfinfo_kernel ||
@@ -1277,21 +1274,18 @@ static int mptcp_get_full_info(struct mptcp_full_info *mfi,
 }
 
 static int mptcp_put_full_info(struct mptcp_full_info *mfi,
-			       char __user *optval,
-			       u32 copylen,
-			       int __user *optlen)
+			       sockopt_t *opt,
+			       u32 copylen)
 {
 	copylen += MIN_FULL_INFO_OPTLEN_SIZE;
-	if (put_user(copylen, optlen))
-		return -EFAULT;
+	opt->optlen = copylen;
 
-	if (copy_to_user(optval, mfi, copylen))
+	if (copy_to_iter(mfi, copylen, &opt->iter) != copylen)
 		return -EFAULT;
 	return 0;
 }
 
-static int mptcp_getsockopt_full_info(struct mptcp_sock *msk, char __user *optval,
-				      int __user *optlen)
+static int mptcp_getsockopt_full_info(struct mptcp_sock *msk, sockopt_t *opt)
 {
 	unsigned int sfcount = 0, copylen = 0;
 	struct mptcp_subflow_context *subflow;
@@ -1300,7 +1294,7 @@ static int mptcp_getsockopt_full_info(struct mptcp_sock *msk, char __user *optva
 	struct mptcp_full_info mfi;
 	int len;
 
-	len = mptcp_get_full_info(&mfi, optval, optlen);
+	len = mptcp_get_full_info(&mfi, opt);
 	if (len < 0)
 		return len;
 
@@ -1354,7 +1348,7 @@ static int mptcp_getsockopt_full_info(struct mptcp_sock *msk, char __user *optva
 	release_sock(sk);
 
 	mfi.num_subflows = sfcount;
-	if (mptcp_put_full_info(&mfi, optval, copylen, optlen))
+	if (mptcp_put_full_info(&mfi, opt, copylen))
 		return -EFAULT;
 
 	return 0;
@@ -1364,13 +1358,11 @@ fail_release:
 	return -EFAULT;
 }
 
-static int mptcp_put_int_option(struct mptcp_sock *msk, char __user *optval,
-				int __user *optlen, int val)
+static int mptcp_put_int_option(struct mptcp_sock *msk, sockopt_t *opt, int val)
 {
 	int len;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 	if (len < 0)
 		return -EINVAL;
 
@@ -1378,15 +1370,13 @@ static int mptcp_put_int_option(struct mptcp_sock *msk, char __user *optval,
 		unsigned char ucval = (unsigned char)val;
 
 		len = 1;
-		if (put_user(len, optlen))
-			return -EFAULT;
-		if (copy_to_user(optval, &ucval, 1))
+		opt->optlen = len;
+		if (copy_to_iter(&ucval, 1, &opt->iter) != 1)
 			return -EFAULT;
 	} else {
 		len = min_t(unsigned int, len, sizeof(int));
-		if (put_user(len, optlen))
-			return -EFAULT;
-		if (copy_to_user(optval, &val, len))
+		opt->optlen = len;
+		if (copy_to_iter(&val, len, &opt->iter) != len)
 			return -EFAULT;
 	}
 
@@ -1394,7 +1384,7 @@ static int mptcp_put_int_option(struct mptcp_sock *msk, char __user *optval,
 }
 
 static int mptcp_getsockopt_sol_tcp(struct mptcp_sock *msk, int optname,
-				    char __user *optval, int __user *optlen)
+				    sockopt_t *opt)
 {
 	struct sock *sk = (void *)msk;
 
@@ -1409,55 +1399,55 @@ static int mptcp_getsockopt_sol_tcp(struct mptcp_sock *msk, int optname,
 	case TCP_FASTOPEN_KEY:
 	case TCP_FASTOPEN_NO_COOKIE:
 		return mptcp_getsockopt_first_sf_only(msk, SOL_TCP, optname,
-						      optval, optlen);
+						      opt);
 	case TCP_INQ:
-		return mptcp_put_int_option(msk, optval, optlen, msk->recvmsg_inq);
+		return mptcp_put_int_option(msk, opt, msk->recvmsg_inq);
 	case TCP_CORK:
-		return mptcp_put_int_option(msk, optval, optlen, msk->cork);
+		return mptcp_put_int_option(msk, opt, msk->cork);
 	case TCP_NODELAY:
-		return mptcp_put_int_option(msk, optval, optlen, msk->nodelay);
+		return mptcp_put_int_option(msk, opt, msk->nodelay);
 	case TCP_KEEPIDLE:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 					    msk->keepalive_idle ? :
 					    READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_keepalive_time) / HZ);
 	case TCP_KEEPINTVL:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 					    msk->keepalive_intvl ? :
 					    READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_keepalive_intvl) / HZ);
 	case TCP_KEEPCNT:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 					    msk->keepalive_cnt ? :
 					    READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_keepalive_probes));
 	case TCP_NOTSENT_LOWAT:
-		return mptcp_put_int_option(msk, optval, optlen, msk->notsent_lowat);
+		return mptcp_put_int_option(msk, opt, msk->notsent_lowat);
 	case TCP_IS_MPTCP:
-		return mptcp_put_int_option(msk, optval, optlen, 1);
+		return mptcp_put_int_option(msk, opt, 1);
 	case TCP_MAXSEG:
 		return mptcp_getsockopt_first_sf_only(msk, SOL_TCP, optname,
-						      optval, optlen);
+						      opt);
 	}
 	return -EOPNOTSUPP;
 }
 
 static int mptcp_getsockopt_v4(struct mptcp_sock *msk, int optname,
-			       char __user *optval, int __user *optlen)
+			       sockopt_t *opt)
 {
 	struct sock *sk = (void *)msk;
 
 	switch (optname) {
 	case IP_TOS:
-		return mptcp_put_int_option(msk, optval, optlen, READ_ONCE(inet_sk(sk)->tos));
+		return mptcp_put_int_option(msk, opt, READ_ONCE(inet_sk(sk)->tos));
 	case IP_FREEBIND:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 				inet_test_bit(FREEBIND, sk));
 	case IP_TRANSPARENT:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 				inet_test_bit(TRANSPARENT, sk));
 	case IP_BIND_ADDRESS_NO_PORT:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 				inet_test_bit(BIND_ADDRESS_NO_PORT, sk));
 	case IP_LOCAL_PORT_RANGE:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 				READ_ONCE(inet_sk(sk)->local_port_range));
 	}
 
@@ -1465,19 +1455,19 @@ static int mptcp_getsockopt_v4(struct mptcp_sock *msk, int optname,
 }
 
 static int mptcp_getsockopt_v6(struct mptcp_sock *msk, int optname,
-			       char __user *optval, int __user *optlen)
+			       sockopt_t *opt)
 {
 	struct sock *sk = (void *)msk;
 
 	switch (optname) {
 	case IPV6_V6ONLY:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 					    sk->sk_ipv6only);
 	case IPV6_TRANSPARENT:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 					    inet_test_bit(TRANSPARENT, sk));
 	case IPV6_FREEBIND:
-		return mptcp_put_int_option(msk, optval, optlen,
+		return mptcp_put_int_option(msk, opt,
 					    inet_test_bit(FREEBIND, sk));
 	}
 
@@ -1485,24 +1475,23 @@ static int mptcp_getsockopt_v6(struct mptcp_sock *msk, int optname,
 }
 
 static int mptcp_getsockopt_sol_mptcp(struct mptcp_sock *msk, int optname,
-				      char __user *optval, int __user *optlen)
+				      sockopt_t *opt)
 {
 	switch (optname) {
 	case MPTCP_INFO:
-		return mptcp_getsockopt_info(msk, optval, optlen);
+		return mptcp_getsockopt_info(msk, opt);
 	case MPTCP_FULL_INFO:
-		return mptcp_getsockopt_full_info(msk, optval, optlen);
+		return mptcp_getsockopt_full_info(msk, opt);
 	case MPTCP_TCPINFO:
-		return mptcp_getsockopt_tcpinfo(msk, optval, optlen);
+		return mptcp_getsockopt_tcpinfo(msk, opt);
 	case MPTCP_SUBFLOW_ADDRS:
-		return mptcp_getsockopt_subflow_addrs(msk, optval, optlen);
+		return mptcp_getsockopt_subflow_addrs(msk, opt);
 	}
 
 	return -EOPNOTSUPP;
 }
 
-int mptcp_getsockopt(struct sock *sk, int level, int optname,
-		     char __user *optval, int __user *option)
+int mptcp_getsockopt(struct sock *sk, int level, int optname, sockopt_t *opt)
 {
 	struct mptcp_sock *msk = mptcp_sk(sk);
 	struct sock *ssk;
@@ -1519,16 +1508,16 @@ int mptcp_getsockopt(struct sock *sk, int level, int optname,
 	ssk = __mptcp_tcp_fallback(msk);
 	release_sock(sk);
 	if (ssk)
-		return tcp_getsockopt(ssk, level, optname, optval, option);
+		return tcp_getsockopt(ssk, level, optname, opt);
 
 	if (level == SOL_IP)
-		return mptcp_getsockopt_v4(msk, optname, optval, option);
+		return mptcp_getsockopt_v4(msk, optname, opt);
 	if (level == SOL_IPV6)
-		return mptcp_getsockopt_v6(msk, optname, optval, option);
+		return mptcp_getsockopt_v6(msk, optname, opt);
 	if (level == SOL_TCP)
-		return mptcp_getsockopt_sol_tcp(msk, optname, optval, option);
+		return mptcp_getsockopt_sol_tcp(msk, optname, opt);
 	if (level == SOL_MPTCP)
-		return mptcp_getsockopt_sol_mptcp(msk, optname, optval, option);
+		return mptcp_getsockopt_sol_mptcp(msk, optname, opt);
 	return -EOPNOTSUPP;
 }
 
