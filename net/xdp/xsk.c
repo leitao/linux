@@ -19,6 +19,7 @@
 #include <linux/socket.h>
 #include <linux/file.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/net.h>
 #include <linux/netdevice.h>
 #include <linux/rculist.h>
@@ -1603,7 +1604,7 @@ struct xdp_statistics_v1 {
 };
 
 static int xsk_getsockopt(struct socket *sock, int level, int optname,
-			  char __user *optval, int __user *optlen)
+			  sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	struct xdp_sock *xs = xdp_sk(sk);
@@ -1612,8 +1613,7 @@ static int xsk_getsockopt(struct socket *sock, int level, int optname,
 	if (level != SOL_XDP)
 		return -ENOPROTOOPT;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 	if (len < 0)
 		return -EINVAL;
 
@@ -1647,10 +1647,9 @@ static int xsk_getsockopt(struct socket *sock, int level, int optname,
 		stats.tx_invalid_descs = xskq_nb_invalid_descs(xs->tx);
 		mutex_unlock(&xs->mutex);
 
-		if (copy_to_user(optval, &stats, stats_size))
+		if (copy_to_iter(&stats, stats_size, &opt->iter) != stats_size)
 			return -EFAULT;
-		if (put_user(stats_size, optlen))
-			return -EFAULT;
+		opt->optlen = stats_size;
 
 		return 0;
 	}
@@ -1699,10 +1698,9 @@ static int xsk_getsockopt(struct socket *sock, int level, int optname,
 			to_copy = &off_v1;
 		}
 
-		if (copy_to_user(optval, to_copy, len))
+		if (copy_to_iter(to_copy, len, &opt->iter) != len)
 			return -EFAULT;
-		if (put_user(len, optlen))
-			return -EFAULT;
+		opt->optlen = len;
 
 		return 0;
 	}
@@ -1719,10 +1717,9 @@ static int xsk_getsockopt(struct socket *sock, int level, int optname,
 		mutex_unlock(&xs->mutex);
 
 		len = sizeof(opts);
-		if (copy_to_user(optval, &opts, len))
+		if (copy_to_iter(&opts, len, &opt->iter) != len)
 			return -EFAULT;
-		if (put_user(len, optlen))
-			return -EFAULT;
+		opt->optlen = len;
 
 		return 0;
 	}
@@ -1823,7 +1820,7 @@ static const struct proto_ops xsk_proto_ops = {
 	.listen		= sock_no_listen,
 	.shutdown	= sock_no_shutdown,
 	.setsockopt	= xsk_setsockopt,
-	.getsockopt	= xsk_getsockopt,
+	.getsockopt_iter = xsk_getsockopt,
 	.sendmsg	= xsk_sendmsg,
 	.recvmsg	= xsk_recvmsg,
 	.mmap		= xsk_mmap,
