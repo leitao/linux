@@ -35,6 +35,7 @@
 #include <linux/fcntl.h>
 #include <linux/termios.h>
 #include <linux/mm.h>
+#include <linux/uio.h>
 #include <linux/interrupt.h>
 #include <linux/notifier.h>
 #include <net/rose.h>
@@ -453,7 +454,7 @@ static int rose_setsockopt(struct socket *sock, int level, int optname,
 }
 
 static int rose_getsockopt(struct socket *sock, int level, int optname,
-	char __user *optval, int __user *optlen)
+	sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	struct rose_sock *rose = rose_sk(sk);
@@ -463,8 +464,7 @@ static int rose_getsockopt(struct socket *sock, int level, int optname,
 	if (level != SOL_ROSE)
 		return -ENOPROTOOPT;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	if (len < 0)
 		return -EINVAL;
@@ -504,10 +504,11 @@ static int rose_getsockopt(struct socket *sock, int level, int optname,
 
 	len = min_t(unsigned int, len, sizeof(int));
 
-	if (put_user(len, optlen))
+	if (copy_to_iter(&val, len, &opt->iter) != len)
 		return -EFAULT;
 
-	return copy_to_user(optval, &val, len) ? -EFAULT : 0;
+	opt->optlen = len;
+	return 0;
 }
 
 static int rose_listen(struct socket *sock, int backlog)
@@ -1533,7 +1534,7 @@ static const struct proto_ops rose_proto_ops = {
 	.listen		=	rose_listen,
 	.shutdown	=	sock_no_shutdown,
 	.setsockopt	=	rose_setsockopt,
-	.getsockopt	=	rose_getsockopt,
+	.getsockopt_iter =	rose_getsockopt,
 	.sendmsg	=	rose_sendmsg,
 	.recvmsg	=	rose_recvmsg,
 	.mmap		=	sock_no_mmap,
