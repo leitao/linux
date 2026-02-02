@@ -22,6 +22,7 @@
 #include <linux/slab.h>
 #include <net/sock.h>		/* struct sock */
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/poll.h>
 
 #include <linux/atomic.h>
@@ -797,13 +798,12 @@ int vcc_setsockopt(struct socket *sock, int level, int optname,
 }
 
 int vcc_getsockopt(struct socket *sock, int level, int optname,
-		   char __user *optval, int __user *optlen)
+		   sockopt_t *opt)
 {
 	struct atm_vcc *vcc;
 	int len;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 	if (__SO_LEVEL_MATCH(optname, level) && len != __SO_SIZE(optname))
 		return -EINVAL;
 
@@ -812,11 +812,18 @@ int vcc_getsockopt(struct socket *sock, int level, int optname,
 	case SO_ATMQOS:
 		if (!test_bit(ATM_VF_HASQOS, &vcc->flags))
 			return -EINVAL;
-		return copy_to_user(optval, &vcc->qos, sizeof(vcc->qos))
-			? -EFAULT : 0;
+		if (copy_to_iter(&vcc->qos, sizeof(vcc->qos), &opt->iter) !=
+				sizeof(vcc->qos))
+			return -EFAULT;
+		return 0;
 	case SO_SETCLP:
-		return put_user(vcc->atm_options & ATM_ATMOPT_CLP ? 1 : 0,
-				(unsigned long __user *)optval) ? -EFAULT : 0;
+	{
+		unsigned long val = vcc->atm_options & ATM_ATMOPT_CLP ? 1 : 0;
+
+		if (copy_to_iter(&val, sizeof(val), &opt->iter) != sizeof(val))
+			return -EFAULT;
+		return 0;
+	}
 	case SO_ATMPVC:
 	{
 		struct sockaddr_atmpvc pvc;
@@ -828,7 +835,9 @@ int vcc_getsockopt(struct socket *sock, int level, int optname,
 		pvc.sap_addr.itf = vcc->dev->number;
 		pvc.sap_addr.vpi = vcc->vpi;
 		pvc.sap_addr.vci = vcc->vci;
-		return copy_to_user(optval, &pvc, sizeof(pvc)) ? -EFAULT : 0;
+		if (copy_to_iter(&pvc, sizeof(pvc), &opt->iter) != sizeof(pvc))
+			return -EFAULT;
+		return 0;
 	}
 	default:
 		return -EINVAL;

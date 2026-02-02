@@ -13,6 +13,7 @@
 #include <linux/skbuff.h>
 #include <linux/bitops.h>
 #include <linux/export.h>
+#include <linux/uio.h>
 #include <net/sock.h>		/* for sock_no_* */
 
 #include "resources.h"		/* devs and vccs */
@@ -75,13 +76,13 @@ static int pvc_setsockopt(struct socket *sock, int level, int optname,
 }
 
 static int pvc_getsockopt(struct socket *sock, int level, int optname,
-			  char __user *optval, int __user *optlen)
+			  sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	int error;
 
 	lock_sock(sk);
-	error = vcc_getsockopt(sock, level, optname, optval, optlen);
+	error = vcc_getsockopt(sock, level, optname, opt);
 	release_sock(sk);
 	return error;
 }
@@ -122,7 +123,7 @@ static const struct proto_ops pvc_proto_ops = {
 	.listen =	sock_no_listen,
 	.shutdown =	pvc_shutdown,
 	.setsockopt =	pvc_setsockopt,
-	.getsockopt =	pvc_getsockopt,
+	.getsockopt_iter =	pvc_getsockopt,
 	.sendmsg =	vcc_sendmsg,
 	.recvmsg =	vcc_recvmsg,
 	.mmap =		sock_no_mmap,
