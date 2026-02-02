@@ -418,6 +418,9 @@ void sctp_stream_update(struct sctp_stream *stream, struct sctp_stream *new);
 #define sctp_mid_uo_next(stream, type, sid) \
 	(sctp_stream_##type((stream), (sid))->mid_uo++)
 
+struct sockopt;
+typedef struct sockopt sockopt_t;
+
 /*
  * Pointers to address related SCTP functions.
  * (i.e. things that depend on the address family.)
@@ -430,11 +433,10 @@ struct sctp_af {
 					 int optname,
 					 sockptr_t optval,
 					 unsigned int optlen);
-	int		(*getsockopt)	(struct sock *sk,
+	int		(*getsockopt_iter)	(struct sock *sk,
 					 int level,
 					 int optname,
-					 char __user *optval,
-					 int __user *optlen);
+					 sockopt_t *opt);
 	void		(*get_dst)	(struct sctp_transport *t,
 					 union sctp_addr *saddr,
 					 struct flowi *fl,
