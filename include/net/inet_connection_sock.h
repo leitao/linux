@@ -17,6 +17,7 @@
 #include <linux/poll.h>
 #include <linux/kernel.h>
 #include <linux/sockptr.h>
+#include <linux/net.h>
 
 #include <net/inet_sock.h>
 #include <net/request_sock.h>
@@ -48,6 +49,8 @@ struct inet_connection_sock_af_ops {
 				  sockptr_t optval, unsigned int optlen);
 	int	    (*getsockopt)(struct sock *sk, int level, int optname,
 				  char __user *optval, int __user *optlen);
+	int	    (*getsockopt_iter)(struct sock *sk, int level, int optname,
+				       sockopt_t *opt);
 	void	    (*mtu_reduced)(struct sock *sk);
 };
 
