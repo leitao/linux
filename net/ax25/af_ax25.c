@@ -30,6 +30,7 @@
 #include <linux/skbuff.h>
 #include <net/sock.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/fcntl.h>
 #include <linux/termios.h>	/* For TIOCINQ/OUTQ */
 #include <linux/mm.h>
@@ -715,7 +716,7 @@ static int ax25_setsockopt(struct socket *sock, int level, int optname,
 }
 
 static int ax25_getsockopt(struct socket *sock, int level, int optname,
-	char __user *optval, int __user *optlen)
+	sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	ax25_cb *ax25;
@@ -728,9 +729,7 @@ static int ax25_getsockopt(struct socket *sock, int level, int optname,
 	if (level != SOL_AX25)
 		return -ENOPROTOOPT;
 
-	if (get_user(maxlen, optlen))
-		return -EFAULT;
-
+	maxlen = opt->optlen;
 	if (maxlen < 1)
 		return -EFAULT;
 
@@ -805,10 +804,11 @@ static int ax25_getsockopt(struct socket *sock, int level, int optname,
 	}
 	release_sock(sk);
 
-	if (put_user(length, optlen))
+	if (copy_to_iter(valptr, length, &opt->iter) != length)
 		return -EFAULT;
 
-	return copy_to_user(optval, valptr, length) ? -EFAULT : 0;
+	opt->optlen = length;
+	return 0;
 }
 
 static int ax25_listen(struct socket *sock, int backlog)
@@ -2025,7 +2025,7 @@ static const struct proto_ops ax25_proto_ops = {
 	.listen		= ax25_listen,
 	.shutdown	= ax25_shutdown,
 	.setsockopt	= ax25_setsockopt,
-	.getsockopt	= ax25_getsockopt,
+	.getsockopt_iter = ax25_getsockopt,
 	.sendmsg	= ax25_sendmsg,
 	.recvmsg	= ax25_recvmsg,
 	.mmap		= sock_no_mmap,
