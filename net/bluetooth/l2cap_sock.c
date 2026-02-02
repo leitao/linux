@@ -31,6 +31,7 @@
 #include <linux/export.h>
 #include <linux/filter.h>
 #include <linux/sched/signal.h>
+#include <linux/uio.h>
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
@@ -433,7 +434,7 @@ static int l2cap_get_mode(struct l2cap_chan *chan)
 }
 
 static int l2cap_sock_getsockopt_old(struct socket *sock, int optname,
-				     char __user *optval, int __user *optlen)
+				     sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	struct l2cap_chan *chan = l2cap_pi(sk)->chan;
@@ -441,12 +442,11 @@ static int l2cap_sock_getsockopt_old(struct socket *sock, int optname,
 	struct l2cap_conninfo cinfo;
 	int err = 0;
 	size_t len;
-	u32 opt;
+	u32 optval;
 
 	BT_DBG("sk %p", sk);
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	lock_sock(sk);
 
@@ -488,39 +488,41 @@ static int l2cap_sock_getsockopt_old(struct socket *sock, int optname,
 		BT_DBG("mode 0x%2.2x", chan->mode);
 
 		len = min(len, sizeof(opts));
-		if (copy_to_user(optval, (char *) &opts, len))
+		if (copy_to_iter(&opts, len, &opt->iter) != len)
 			err = -EFAULT;
+		else
+			opt->optlen = len;
 
 		break;
 
 	case L2CAP_LM:
 		switch (chan->sec_level) {
 		case BT_SECURITY_LOW:
-			opt = L2CAP_LM_AUTH;
+			optval = L2CAP_LM_AUTH;
 			break;
 		case BT_SECURITY_MEDIUM:
-			opt = L2CAP_LM_AUTH | L2CAP_LM_ENCRYPT;
+			optval = L2CAP_LM_AUTH | L2CAP_LM_ENCRYPT;
 			break;
 		case BT_SECURITY_HIGH:
-			opt = L2CAP_LM_AUTH | L2CAP_LM_ENCRYPT |
+			optval = L2CAP_LM_AUTH | L2CAP_LM_ENCRYPT |
 			      L2CAP_LM_SECURE;
 			break;
 		case BT_SECURITY_FIPS:
-			opt = L2CAP_LM_AUTH | L2CAP_LM_ENCRYPT |
+			optval = L2CAP_LM_AUTH | L2CAP_LM_ENCRYPT |
 			      L2CAP_LM_SECURE | L2CAP_LM_FIPS;
 			break;
 		default:
-			opt = 0;
+			optval = 0;
 			break;
 		}
 
 		if (test_bit(FLAG_ROLE_SWITCH, &chan->flags))
-			opt |= L2CAP_LM_MASTER;
+			optval |= L2CAP_LM_MASTER;
 
 		if (test_bit(FLAG_FORCE_RELIABLE, &chan->flags))
-			opt |= L2CAP_LM_RELIABLE;
+			optval |= L2CAP_LM_RELIABLE;
 
-		if (put_user(opt, (u32 __user *) optval))
+		if (copy_to_iter(&optval, sizeof(optval), &opt->iter) != sizeof(optval))
 			err = -EFAULT;
 
 		break;
@@ -538,8 +540,10 @@ static int l2cap_sock_getsockopt_old(struct socket *sock, int optname,
 		memcpy(cinfo.dev_class, chan->conn->hcon->dev_class, 3);
 
 		len = min(len, sizeof(cinfo));
-		if (copy_to_user(optval, (char *) &cinfo, len))
+		if (copy_to_iter(&cinfo, len, &opt->iter) != len)
 			err = -EFAULT;
+		else
+			opt->optlen = len;
 
 		break;
 
@@ -553,7 +557,7 @@ static int l2cap_sock_getsockopt_old(struct socket *sock, int optname,
 }
 
 static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
-				 char __user *optval, int __user *optlen)
+				 sockopt_t *opt)
 {
 	struct sock *sk = sock->sk;
 	struct l2cap_chan *chan = l2cap_pi(sk)->chan;
@@ -565,13 +569,12 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 	BT_DBG("sk %p", sk);
 
 	if (level == SOL_L2CAP)
-		return l2cap_sock_getsockopt_old(sock, optname, optval, optlen);
+		return l2cap_sock_getsockopt_old(sock, optname, opt);
 
 	if (level != SOL_BLUETOOTH)
 		return -ENOPROTOOPT;
 
-	if (get_user(len, optlen))
-		return -EFAULT;
+	len = opt->optlen;
 
 	lock_sock(sk);
 
@@ -595,8 +598,10 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 		}
 
 		len = min_t(unsigned int, len, sizeof(sec));
-		if (copy_to_user(optval, (char *) &sec, len))
+		if (copy_to_iter(&sec, len, &opt->iter) != len)
 			err = -EFAULT;
+		else
+			opt->optlen = len;
 
 		break;
 
@@ -606,16 +611,22 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		if (put_user(test_bit(BT_SK_DEFER_SETUP, &bt_sk(sk)->flags),
-			     (u32 __user *) optval))
-			err = -EFAULT;
+		{
+			u32 val = test_bit(BT_SK_DEFER_SETUP, &bt_sk(sk)->flags);
+
+			if (copy_to_iter(&val, sizeof(val), &opt->iter) != sizeof(val))
+				err = -EFAULT;
+		}
 
 		break;
 
 	case BT_FLUSHABLE:
-		if (put_user(test_bit(FLAG_FLUSHABLE, &chan->flags),
-			     (u32 __user *) optval))
-			err = -EFAULT;
+		{
+			u32 val = test_bit(FLAG_FLUSHABLE, &chan->flags);
+
+			if (copy_to_iter(&val, sizeof(val), &opt->iter) != sizeof(val))
+				err = -EFAULT;
+		}
 
 		break;
 
@@ -629,14 +640,20 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 		pwr.force_active = test_bit(FLAG_FORCE_ACTIVE, &chan->flags);
 
 		len = min_t(unsigned int, len, sizeof(pwr));
-		if (copy_to_user(optval, (char *) &pwr, len))
+		if (copy_to_iter(&pwr, len, &opt->iter) != len)
 			err = -EFAULT;
+		else
+			opt->optlen = len;
 
 		break;
 
 	case BT_CHANNEL_POLICY:
-		if (put_user(chan->chan_policy, (u32 __user *) optval))
-			err = -EFAULT;
+		{
+			u32 val = chan->chan_policy;
+
+			if (copy_to_iter(&val, sizeof(val), &opt->iter) != sizeof(val))
+				err = -EFAULT;
+		}
 		break;
 
 	case BT_SNDMTU:
@@ -650,7 +667,7 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		if (put_user(chan->omtu, (u16 __user *) optval))
+		if (copy_to_iter(&chan->omtu, sizeof(chan->omtu), &opt->iter) != sizeof(chan->omtu))
 			err = -EFAULT;
 		break;
 
@@ -660,7 +677,7 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		if (put_user(chan->imtu, (u16 __user *) optval))
+		if (copy_to_iter(&chan->imtu, sizeof(chan->imtu), &opt->iter) != sizeof(chan->imtu))
 			err = -EFAULT;
 		break;
 
@@ -672,7 +689,7 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 
 		phys = hci_conn_get_phy(chan->conn->hcon);
 
-		if (put_user(phys, (u32 __user *) optval))
+		if (copy_to_iter(&phys, sizeof(phys), &opt->iter) != sizeof(phys))
 			err = -EFAULT;
 		break;
 
@@ -693,8 +710,12 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		if (put_user(mode, (u8 __user *) optval))
-			err = -EFAULT;
+		{
+			u8 val = mode;
+
+			if (copy_to_iter(&val, sizeof(val), &opt->iter) != sizeof(val))
+				err = -EFAULT;
+		}
 		break;
 
 	default:
@@ -1963,7 +1984,7 @@ static const struct proto_ops l2cap_sock_ops = {
 	.socketpair	= sock_no_socketpair,
 	.shutdown	= l2cap_sock_shutdown,
 	.setsockopt	= l2cap_sock_setsockopt,
-	.getsockopt	= l2cap_sock_getsockopt
+	.getsockopt_iter = l2cap_sock_getsockopt
 };
 
 static const struct net_proto_family l2cap_sock_family_ops = {
