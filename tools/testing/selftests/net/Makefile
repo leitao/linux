@@ -188,6 +188,7 @@ TEST_GEN_PROGS := \
 	tap \
 	tcp_port_share \
 	tls \
+	getsockopt_iter \
 # end of TEST_GEN_PROGS
 
 TEST_FILES := \
