@@ -804,10 +804,19 @@ static bool refresh_cpu_vm_stats(bool do_pagesets)
 	int global_zone_diff[NR_VM_ZONE_STAT_ITEMS] = { 0, };
 	int global_node_diff[NR_VM_NODE_STAT_ITEMS] = { 0, };
 	bool changed = false;
+	u64 t_start, t_zone_loop, t_decay, t_drain, t_resched, t_node_loop, t_end;
+	int nr_zones = 0, nr_decays = 0, nr_drains = 0;
+
+	t_start = ktime_get_ns();
+	t_decay = 0;
+	t_drain = 0;
+	t_resched = 0;
 
 	for_each_populated_zone(zone) {
 		struct per_cpu_zonestat __percpu *pzstats = zone->per_cpu_zonestats;
 		struct per_cpu_pages __percpu *pcp = zone->per_cpu_pageset;
+
+		nr_zones++;
 
 		for (i = 0; i < NR_VM_ZONE_STAT_ITEMS; i++) {
 			int v;
@@ -825,10 +834,18 @@ static bool refresh_cpu_vm_stats(bool do_pagesets)
 		}
 
 		if (do_pagesets) {
-			cond_resched();
+			u64 t_tmp;
 
-			if (decay_pcp_high(zone, this_cpu_ptr(pcp)))
+			t_tmp = ktime_get_ns();
+			cond_resched();
+			t_resched += ktime_get_ns() - t_tmp;
+
+			t_tmp = ktime_get_ns();
+			if (decay_pcp_high(zone, this_cpu_ptr(pcp))) {
 				changed = true;
+				nr_decays++;
+			}
+			t_decay += ktime_get_ns() - t_tmp;
 #ifdef CONFIG_NUMA
 			/*
 			 * Deal with draining the remote pageset of this
@@ -855,12 +872,18 @@ static bool refresh_cpu_vm_stats(bool do_pagesets)
 			}
 
 			if (__this_cpu_read(pcp->count)) {
+				u64 t_tmp = ktime_get_ns();
+
 				drain_zone_pages(zone, this_cpu_ptr(pcp));
+				t_drain += ktime_get_ns() - t_tmp;
+				nr_drains++;
 				changed = true;
 			}
 #endif
 		}
 	}
+
+	t_zone_loop = ktime_get_ns();
 
 	for_each_online_pgdat(pgdat) {
 		struct per_cpu_nodestat __percpu *p = pgdat->per_cpu_nodestats;
@@ -876,8 +899,27 @@ static bool refresh_cpu_vm_stats(bool do_pagesets)
 		}
 	}
 
+	t_node_loop = ktime_get_ns();
+
 	if (fold_diff(global_zone_diff, global_node_diff))
 		changed = true;
+
+	t_end = ktime_get_ns();
+
+	if (t_end - t_start > 5 * NSEC_PER_MSEC)
+		pr_warn_ratelimited("vmstat: refresh_cpu_vm_stats took %lluus "
+			"(zone_loop=%lluus resched=%lluus decay=%lluus "
+			"drain=%lluus node_loop=%lluus fold=%lluus) "
+			"zones=%d decays=%d drains=%d cpu=%d\n",
+			(t_end - t_start) / NSEC_PER_USEC,
+			(t_zone_loop - t_start) / NSEC_PER_USEC,
+			t_resched / NSEC_PER_USEC,
+			t_decay / NSEC_PER_USEC,
+			t_drain / NSEC_PER_USEC,
+			(t_node_loop - t_zone_loop) / NSEC_PER_USEC,
+			(t_end - t_node_loop) / NSEC_PER_USEC,
+			nr_zones, nr_decays, nr_drains, smp_processor_id());
+
 	return changed;
 }
 

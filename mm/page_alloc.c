@@ -2557,10 +2557,16 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 bool decay_pcp_high(struct zone *zone, struct per_cpu_pages *pcp)
 {
 	int high_min, to_drain, to_drain_batched, batch;
+	int total_drained = 0, nr_batches = 0;
+	int orig_count, orig_high;
 	bool todo = false;
+	u64 t_start = ktime_get_ns();
+	u64 t_worst_batch = 0;
 
 	high_min = READ_ONCE(pcp->high_min);
 	batch = READ_ONCE(pcp->batch);
+	orig_count = pcp->count;
+	orig_high = pcp->high;
 	/*
 	 * Decrease pcp->high periodically to try to free possible
 	 * idle PCP pages.  And, avoid to free too many pages to
@@ -2575,13 +2581,38 @@ bool decay_pcp_high(struct zone *zone, struct per_cpu_pages *pcp)
 
 	to_drain = pcp->count - pcp->high;
 	while (to_drain > 0) {
+		u64 t_batch = ktime_get_ns();
+
 		to_drain_batched = min(to_drain, batch);
 		pcp_spin_lock_nopin(pcp);
 		free_pcppages_bulk(zone, to_drain_batched, pcp, 0);
 		pcp_spin_unlock_nopin(pcp);
 		todo = true;
+		total_drained += to_drain_batched;
+		nr_batches++;
+
+		t_batch = ktime_get_ns() - t_batch;
+		if (t_batch > t_worst_batch)
+			t_worst_batch = t_batch;
 
 		to_drain -= to_drain_batched;
+	}
+
+	if (total_drained) {
+		u64 elapsed = ktime_get_ns() - t_start;
+
+		if (elapsed > 5 * NSEC_PER_MSEC)
+			pr_warn_ratelimited("decay_pcp_high: %lluus to free %d pages "
+				"in %d batches (batch=%d worst_batch=%lluus "
+				"avg_batch=%lluus count=%d->%d "
+				"high=%d->%d high_min=%d zone=%s cpu=%d)\n",
+				elapsed / NSEC_PER_USEC,
+				total_drained, nr_batches, batch,
+				t_worst_batch / NSEC_PER_USEC,
+				(elapsed / nr_batches) / NSEC_PER_USEC,
+				orig_count, pcp->count,
+				orig_high, pcp->high, high_min,
+				zone->name, smp_processor_id());
 	}
 
 	return todo;
