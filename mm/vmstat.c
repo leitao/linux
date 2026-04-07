@@ -2040,6 +2040,22 @@ static int vmstat_refresh(const struct ctl_table *table, int write,
 }
 #endif /* CONFIG_PROC_FS */
 
+/*
+ * Return a per-cpu initial delay that spreads vmstat_update work evenly
+ * across the stat interval, so that CPUs do not all fire at the same
+ * second boundary.
+ */
+static unsigned long vmstat_spread_delay(int cpu)
+{
+	unsigned long interval = sysctl_stat_interval;
+	unsigned int nr_cpus = num_online_cpus();
+
+	if (nr_cpus <= 1)
+		return 0;
+
+	return (interval * (cpu % nr_cpus)) / nr_cpus;
+}
+
 static void vmstat_update(struct work_struct *w)
 {
 	if (refresh_cpu_vm_stats(true)) {
@@ -2047,10 +2063,13 @@ static void vmstat_update(struct work_struct *w)
 		 * Counters were updated so we expect more updates
 		 * to occur in the future. Keep on running the
 		 * update worker thread.
+		 * Avoid round_jiffies_relative() here -- it would snap
+		 * every CPU back to the same second boundary, undoing
+		 * the initial spread from vmstat_shepherd.
 		 */
 		queue_delayed_work_on(smp_processor_id(), mm_percpu_wq,
 				this_cpu_ptr(&vmstat_work),
-				round_jiffies_relative(sysctl_stat_interval));
+				sysctl_stat_interval);
 	}
 }
 
@@ -2148,7 +2167,8 @@ static void vmstat_shepherd(struct work_struct *w)
 				continue;
 
 			if (!delayed_work_pending(dw) && need_update(cpu))
-				queue_delayed_work_on(cpu, mm_percpu_wq, dw, 0);
+				queue_delayed_work_on(cpu, mm_percpu_wq, dw,
+						      vmstat_spread_delay(cpu));
 		}
 
 		cond_resched();
