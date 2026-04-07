@@ -22,6 +22,7 @@
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
 #include <linux/sched.h>
+#include <linux/sched/clock.h>
 #include <linux/math64.h>
 #include <linux/writeback.h>
 #include <linux/compaction.h>
@@ -798,12 +799,15 @@ static int fold_diff(int *zone_diff, int *node_diff)
  */
 static bool refresh_cpu_vm_stats(bool do_pagesets)
 {
-	struct pglist_data *pgdat;
-	struct zone *zone;
-	int i;
 	int global_zone_diff[NR_VM_ZONE_STAT_ITEMS] = { 0, };
 	int global_node_diff[NR_VM_NODE_STAT_ITEMS] = { 0, };
+	struct pglist_data *pgdat;
 	bool changed = false;
+	struct zone *zone;
+	u64 start, elapsed;
+	int i;
+
+	start = local_clock();
 
 	for_each_populated_zone(zone) {
 		struct per_cpu_zonestat __percpu *pzstats = zone->per_cpu_zonestats;
@@ -878,6 +882,10 @@ static bool refresh_cpu_vm_stats(bool do_pagesets)
 
 	if (fold_diff(global_zone_diff, global_node_diff))
 		changed = true;
+
+	elapsed = local_clock() - start;
+	trace_printk("refresh_cpu_vm_stats took %llu ns\n", elapsed);
+
 	return changed;
 }
 
