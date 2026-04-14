@@ -476,6 +476,18 @@ static void __init __boot_config_load(const char *data, size_t size)
 		extra_command_line = xbc_make_cmdline("kernel", XBC_CMDLINE);
 		/* Also, "init." keys are init arguments */
 		extra_init_args = xbc_make_cmdline("init", XBC_INITARGS);
+		/* Prepend bootconfig params to boot_command_line so that
+		 * parse_early_param() sees them. Clear extra_command_line
+		 * so setup_command_line() doesn't prepend them again.
+		 */
+		if (extra_command_line) {
+			static char tmp[COMMAND_LINE_SIZE] __initdata;
+
+			strscpy(tmp, boot_command_line, COMMAND_LINE_SIZE);
+			snprintf(boot_command_line, COMMAND_LINE_SIZE,
+				 "%s %s", extra_command_line, tmp);
+			extra_command_line = NULL;
+		}
 	}
 }
 
