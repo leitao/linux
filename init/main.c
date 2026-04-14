@@ -425,19 +425,16 @@ static int __init warn_bootconfig(char *str)
 	return 0;
 }
 
-static void __init setup_boot_config(void)
+/*
+ * Parse bootconfig data and extract kernel/init command line parameters.
+ * Shared by both the early embedded path and the late initrd path.
+ */
+static void __init __boot_config_load(const char *data, size_t size)
 {
 	static char tmp_cmdline[COMMAND_LINE_SIZE] __initdata;
-	const char *msg, *data;
+	const char *msg;
 	int pos, ret;
-	size_t size;
 	char *err;
-
-	/* Cut out the bootconfig data even if we have no bootconfig option */
-	data = get_boot_config_from_initrd(&size);
-	/* If there is no bootconfig in initrd, try embedded one. */
-	if (!data)
-		data = xbc_get_embedded_bootconfig(&size);
 
 	strscpy(tmp_cmdline, boot_command_line, COMMAND_LINE_SIZE);
 	err = parse_args("bootconfig", tmp_cmdline, NULL, 0, 0, 0, NULL,
@@ -480,7 +477,45 @@ static void __init setup_boot_config(void)
 		/* Also, "init." keys are init arguments */
 		extra_init_args = xbc_make_cmdline("init", XBC_INITARGS);
 	}
-	return;
+}
+
+/*
+ * Load embedded bootconfig before setup_arch(). This runs before memblock
+ * is available, relying on static buffers in the bootconfig parser.
+ * The embedded data lives in .init.rodata so no allocation is needed
+ * to access it.
+ */
+static void __init setup_boot_config_early(void)
+{
+	const char *data;
+	size_t size;
+
+	data = xbc_get_embedded_bootconfig(&size);
+	if (data) {
+		pr_info("Load embedded bootconfig early\n");
+		__boot_config_load(data, size);
+	}
+}
+
+/*
+ * Load bootconfig from initrd. This runs after setup_arch() when initrd
+ * boundaries are known. Skips parsing if embedded bootconfig was already
+ * loaded by setup_boot_config_early(), but still trims bootconfig data
+ * from the initrd.
+ */
+static void __init setup_boot_config(void)
+{
+	const char *data;
+	size_t size;
+
+	/* Cut out the bootconfig data even if we have no bootconfig option */
+	data = get_boot_config_from_initrd(&size);
+
+	/* If embedded bootconfig was already loaded, just trim initrd */
+	if (xbc_get_info(NULL, NULL) == 0)
+		return;
+
+	__boot_config_load(data, size);
 }
 
 static void __init exit_boot_config(void)
@@ -489,6 +524,8 @@ static void __init exit_boot_config(void)
 }
 
 #else	/* !CONFIG_BOOT_CONFIG */
+
+static void __init setup_boot_config_early(void) { }
 
 static void __init setup_boot_config(void)
 {
@@ -1045,6 +1082,7 @@ void start_kernel(void)
 	boot_cpu_init();
 	page_address_init();
 	pr_notice("%s", linux_banner);
+	setup_boot_config_early();
 	setup_arch(&command_line);
 	mm_core_init_early();
 	/* Static keys and static calls are needed by LSMs */
