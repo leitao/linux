@@ -15,12 +15,11 @@
 
 #ifdef __KERNEL__
 #include <linux/bug.h>
-#include <linux/ctype.h>
-#include <linux/errno.h>
 #include <linux/cache.h>
 #include <linux/compiler.h>
+#include <linux/ctype.h>
+#include <linux/errno.h>
 #include <linux/sprintf.h>
-#include <linux/memblock.h>
 #include <linux/string.h>
 
 #ifdef CONFIG_BOOT_CONFIG_EMBED
@@ -56,18 +55,13 @@ static int open_brace[XBC_DEPTH_MAX] __initdata;
 static int brace_index __initdata;
 
 #ifdef __KERNEL__
-static inline void * __init xbc_alloc_mem(size_t size)
-{
-	return memblock_alloc(size, SMP_CACHE_BYTES);
-}
-
-static inline void __init xbc_free_mem(void *addr, size_t size, bool early)
-{
-	if (early)
-		memblock_free(addr, size);
-	else if (addr)
-		memblock_free(addr, size);
-}
+/*
+ * Use static buffers instead of memblock allocation so that bootconfig
+ * can be parsed before memblock is available (e.g., for embedded bootconfig
+ * that runs before setup_arch()).
+ */
+static char xbc_data_buf[XBC_DATA_MAX + 1] __initdata;
+static struct xbc_node xbc_nodes_buf[XBC_NODE_MAX] __initdata;
 
 #else /* !__KERNEL__ */
 
@@ -930,11 +924,14 @@ static int __init xbc_parse_tree(void)
  */
 void __init _xbc_exit(bool early)
 {
+	/* Kernel uses static buffers, only userspace tools need to free */
+#ifndef __KERNEL__
 	xbc_free_mem(xbc_data, xbc_data_size, early);
+	xbc_free_mem(xbc_nodes, sizeof(struct xbc_node) * XBC_NODE_MAX, early);
+#endif
 	xbc_data = NULL;
 	xbc_data_size = 0;
 	xbc_node_num = 0;
-	xbc_free_mem(xbc_nodes, sizeof(struct xbc_node) * XBC_NODE_MAX, early);
 	xbc_nodes = NULL;
 	brace_index = 0;
 }
@@ -973,16 +970,17 @@ int __init xbc_init(const char *data, size_t size, const char **emsg, int *epos)
 		return -ERANGE;
 	}
 
+	/* Kernel: use static buffers to avoid memblock dependency */
+#ifdef __KERNEL__
+	xbc_data = xbc_data_buf;
+	xbc_nodes = xbc_nodes_buf;
+#else
 	xbc_data = xbc_alloc_mem(size + 1);
 	if (!xbc_data) {
 		if (emsg)
 			*emsg = "Failed to allocate bootconfig data";
 		return -ENOMEM;
 	}
-	memcpy(xbc_data, data, size);
-	xbc_data[size] = '\0';
-	xbc_data_size = size + 1;
-
 	xbc_nodes = xbc_alloc_mem(sizeof(struct xbc_node) * XBC_NODE_MAX);
 	if (!xbc_nodes) {
 		if (emsg)
@@ -990,6 +988,10 @@ int __init xbc_init(const char *data, size_t size, const char **emsg, int *epos)
 		_xbc_exit(true);
 		return -ENOMEM;
 	}
+#endif
+	memcpy(xbc_data, data, size);
+	xbc_data[size] = '\0';
+	xbc_data_size = size + 1;
 
 	ret = xbc_parse_tree();
 	if (!ret)
