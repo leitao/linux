@@ -74,6 +74,8 @@ static int sysctl_memory_failure_recovery __read_mostly = 1;
 
 static int sysctl_enable_soft_offline __read_mostly = 1;
 
+static int sysctl_panic_on_unrecoverable_mf __read_mostly;
+
 atomic_long_t num_poisoned_pages __read_mostly = ATOMIC_LONG_INIT(0);
 
 static bool hw_memory_failure __read_mostly = false;
@@ -151,6 +153,15 @@ static const struct ctl_table memory_failure_table[] = {
 		.procname	= "enable_soft_offline",
 		.data		= &sysctl_enable_soft_offline,
 		.maxlen		= sizeof(sysctl_enable_soft_offline),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+	{
+		.procname	= "panic_on_unrecoverable_memory_failure",
+		.data		= &sysctl_panic_on_unrecoverable_mf,
+		.maxlen		= sizeof(sysctl_panic_on_unrecoverable_mf),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ZERO,
@@ -1282,6 +1293,43 @@ static void update_per_node_mf_stats(unsigned long pfn,
 }
 
 /*
+ * Determine whether to panic on an unrecoverable memory failure.
+ *
+ * Panics on two categories of failures (all requiring result == MF_IGNORED):
+ *
+ * - MF_MSG_KERNEL: Reserved pages (PageReserved), and kernel page types
+ *   that get_any_page() classified as stable unhandlable (slab, vmalloc,
+ *   page tables, kernel stacks, ...) via MF_GET_PAGE_UNHANDLABLE.
+ *
+ * - MF_MSG_UNKNOWN: Pages that reached identify_page_state() but matched no
+ *   recoverable state in error_states[]. A theoretical false positive from
+ *   concurrent LRU isolation is mitigated by identify_page_state()'s
+ *   two-pass design which rechecks using saved page_flags.
+ *
+ * MF_MSG_GET_HWPOISON and MF_MSG_KERNEL_HIGH_ORDER are intentionally
+ * excluded. Both can be reached by transient refcount races with the page
+ * allocator (an in-flight buddy allocation has refcount 0 and is no longer
+ * on the buddy free list, briefly), and we cannot disambiguate them from
+ * a stable kernel page here without holding a folio reference. Panicking
+ * on either would risk false positives that defeat the standard SIGBUS
+ * recovery path for userspace pages.
+ */
+static bool panic_on_unrecoverable_mf(enum mf_action_page_type type,
+				      enum mf_result result)
+{
+	if (!sysctl_panic_on_unrecoverable_mf || result != MF_IGNORED)
+		return false;
+
+	switch (type) {
+	case MF_MSG_KERNEL:
+	case MF_MSG_UNKNOWN:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/*
  * "Dirty/Clean" indication is not 100% accurate due to the possibility of
  * setting PG_dirty outside page lock. See also comment above set_page_dirty().
  */
@@ -1297,6 +1345,9 @@ static int action_result(unsigned long pfn, enum mf_action_page_type type,
 
 	pr_err("%#lx: recovery action for %s: %s\n",
 		pfn, action_page_types[type], action_name[result]);
+
+	if (panic_on_unrecoverable_mf(type, result))
+		panic("Memory failure: %#lx: unrecoverable page", pfn);
 
 	return (result == MF_RECOVERED || result == MF_DELAYED) ? 0 : -EBUSY;
 }
@@ -2476,6 +2527,16 @@ try_again:
 			}
 			res = action_result(pfn, MF_MSG_BUDDY, res);
 		} else {
+			/*
+			 * The page has refcount 0 but is not in the buddy
+			 * allocator. This is typically a tail page of a
+			 * high-order kernel allocation, but a buddy page
+			 * being concurrently allocated to userspace also
+			 * lands here briefly (refcount 0 inside the
+			 * allocator, no longer on the buddy free list).
+			 * We cannot disambiguate the two without holding a
+			 * folio reference, so do not panic on this branch.
+			 */
 			res = action_result(pfn, MF_MSG_KERNEL_HIGH_ORDER, MF_IGNORED);
 		}
 		goto unlock_mutex;
