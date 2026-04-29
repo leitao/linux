@@ -559,6 +559,17 @@ int hw_breakpoint_arch_parse(struct perf_event *bp,
 		else
 			alignment_mask = 0x7;
 		offset = hw->address & alignment_mask;
+
+		/*
+		 * BAS is an 8-bit field in WCR/BCR; the shift below would
+		 * silently drop the high bits of ctrl.len when offset + len
+		 * exceeds 8, programming hardware to watch fewer bytes than
+		 * the user requested.  Reject the unrepresentable combination
+		 * up front, matching the explicit validation the AArch32
+		 * branch above performs.
+		 */
+		if (((u32)hw->ctrl.len << offset) > 0xff)
+			return -EINVAL;
 	}
 
 	hw->address &= ~alignment_mask;
