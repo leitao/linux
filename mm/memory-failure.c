@@ -1389,7 +1389,32 @@ static int __get_hwpoison_page(struct page *page, unsigned long flags)
 
 #define GET_PAGE_MAX_RETRY_NUM 3
 
-static int get_any_page(struct page *p, unsigned long flags)
+/*
+ * Diagnosis of why get_any_page() failed to grab a page reference.
+ *
+ * Set when ret < 0 so callers (notably memory_failure()) can tell apart
+ * a stable kernel page type that hwpoison cannot handle — slab, vmalloc,
+ * page tables, kernel stacks, etc. — from a transient race with the page
+ * allocator lifecycle (allocation/free in flight). The distinction
+ * matters for panic_on_unrecoverable_mf(): the former is a real
+ * unrecoverable kernel-owned poisoning, the latter must not panic since
+ * the page may be destined for userspace where SIGBUS recovery would
+ * otherwise apply.
+ */
+enum mf_get_page_status {
+	MF_GET_PAGE_OK = 0,
+	/*
+	 * Transient lifecycle race with the page allocator. Recorded for
+	 * symmetry and for future callers that may want to distinguish a
+	 * race from an unhandlable kernel page; no in-tree caller acts on
+	 * this value yet.
+	 */
+	MF_GET_PAGE_RACE,
+	MF_GET_PAGE_UNHANDLABLE,	/* stable kernel page hwpoison cannot handle */
+};
+
+static int get_any_page(struct page *p, unsigned long flags,
+			enum mf_get_page_status *status)
 {
 	int ret = 0, pass = 0;
 	bool count_increased = false;
@@ -1406,11 +1431,15 @@ try_again:
 				if (pass++ < GET_PAGE_MAX_RETRY_NUM)
 					goto try_again;
 				ret = -EBUSY;
+				if (status)
+					*status = MF_GET_PAGE_RACE;
 			} else if (!PageHuge(p) && !is_free_buddy_page(p)) {
 				/* We raced with put_page, retry. */
 				if (pass++ < GET_PAGE_MAX_RETRY_NUM)
 					goto try_again;
 				ret = -EIO;
+				if (status)
+					*status = MF_GET_PAGE_RACE;
 			}
 			goto out;
 		} else if (ret == -EBUSY) {
@@ -1423,6 +1452,8 @@ try_again:
 				goto try_again;
 			}
 			ret = -EIO;
+			if (status)
+				*status = MF_GET_PAGE_UNHANDLABLE;
 			goto out;
 		}
 	}
@@ -1442,6 +1473,8 @@ try_again:
 		}
 		put_page(p);
 		ret = -EIO;
+		if (status)
+			*status = MF_GET_PAGE_UNHANDLABLE;
 	}
 out:
 	if (ret == -EIO)
@@ -1503,7 +1536,8 @@ static int __get_unpoison_page(struct page *page)
  *         operations like allocation and free,
  *         -EHWPOISON when the page is hwpoisoned and taken off from buddy.
  */
-static int get_hwpoison_page(struct page *p, unsigned long flags)
+static int get_hwpoison_page(struct page *p, unsigned long flags,
+			     enum mf_get_page_status *status)
 {
 	int ret;
 
@@ -1511,7 +1545,7 @@ static int get_hwpoison_page(struct page *p, unsigned long flags)
 	if (flags & MF_UNPOISON)
 		ret = __get_unpoison_page(p);
 	else
-		ret = get_any_page(p, flags);
+		ret = get_any_page(p, flags, status);
 	zone_pcp_enable(page_zone(p));
 
 	return ret;
@@ -2349,6 +2383,7 @@ int memory_failure(unsigned long pfn, int flags)
 	bool retry = true;
 	int hugetlb = 0;
 	bool is_reserved;
+	enum mf_get_page_status gp_status = MF_GET_PAGE_OK;
 
 	if (!sysctl_memory_failure_recovery)
 		panic("Memory failure on page %lx", pfn);
@@ -2424,7 +2459,7 @@ try_again:
 	 */
 	is_reserved = PageReserved(p);
 
-	res = get_hwpoison_page(p, flags);
+	res = get_hwpoison_page(p, flags, &gp_status);
 	if (!res) {
 		if (is_free_buddy_page(p)) {
 			if (take_page_off_buddy(p)) {
@@ -2445,7 +2480,12 @@ try_again:
 		}
 		goto unlock_mutex;
 	} else if (res < 0) {
-		if (is_reserved)
+		/*
+		 * Promote a stable unhandlable kernel page diagnosed by
+		 * get_hwpoison_page() to MF_MSG_KERNEL alongside reserved
+		 * pages; transient lifecycle races stay as MF_MSG_GET_HWPOISON.
+		 */
+		if (is_reserved || gp_status == MF_GET_PAGE_UNHANDLABLE)
 			res = action_result(pfn, MF_MSG_KERNEL, MF_IGNORED);
 		else
 			res = action_result(pfn, MF_MSG_GET_HWPOISON,
@@ -2750,7 +2790,7 @@ int unpoison_memory(unsigned long pfn)
 		goto unlock_mutex;
 	}
 
-	ghp = get_hwpoison_page(p, MF_UNPOISON);
+	ghp = get_hwpoison_page(p, MF_UNPOISON, NULL);
 	if (!ghp) {
 		if (folio_test_hugetlb(folio)) {
 			huge = true;
@@ -2957,7 +2997,7 @@ int soft_offline_page(unsigned long pfn, int flags)
 
 retry:
 	get_online_mems();
-	ret = get_hwpoison_page(page, flags | MF_SOFT_OFFLINE);
+	ret = get_hwpoison_page(page, flags | MF_SOFT_OFFLINE, NULL);
 	put_online_mems();
 
 	if (hwpoison_filter(page)) {
