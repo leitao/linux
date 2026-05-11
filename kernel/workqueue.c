@@ -5233,8 +5233,6 @@ static void init_pwq(struct pool_workqueue *pwq, struct workqueue_struct *wq,
 {
 	BUG_ON((unsigned long)pwq & ~WORK_STRUCT_PWQ_MASK);
 
-	memset(pwq, 0, sizeof(*pwq));
-
 	pwq->pool = pool;
 	pwq->wq = wq;
 	pwq->flush_color = -1;
@@ -5290,7 +5288,8 @@ static struct pool_workqueue *alloc_unbound_pwq(struct workqueue_struct *wq,
 	if (!pool)
 		return NULL;
 
-	pwq = kmem_cache_alloc_node(pwq_cache, GFP_KERNEL, pool->node);
+	pwq = kmem_cache_alloc_node(pwq_cache, GFP_KERNEL | __GFP_ZERO,
+				    pool->node);
 	if (!pwq) {
 		put_unbound_pool(pool);
 		return NULL;
@@ -5605,7 +5604,8 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 			pool = &(per_cpu_ptr(pools, cpu)[highpri]);
 			pwq_p = per_cpu_ptr(wq->cpu_pwq, cpu);
 
-			*pwq_p = kmem_cache_alloc_node(pwq_cache, GFP_KERNEL,
+			*pwq_p = kmem_cache_alloc_node(pwq_cache,
+						       GFP_KERNEL | __GFP_ZERO,
 						       pool->node);
 			if (!*pwq_p)
 				goto enomem;
