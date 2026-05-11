@@ -376,7 +376,6 @@ struct workqueue_struct {
 	struct wq_device	*wq_dev;	/* I: for sysfs interface */
 #endif
 #ifdef CONFIG_LOCKDEP
-	char			*lock_name;
 	struct lock_class_key	key;
 	struct lockdep_map	__lockdep_map;
 	struct lockdep_map	*lockdep_map;
@@ -4916,7 +4915,6 @@ static void wq_init_lockdep(struct workqueue_struct *wq)
 	if (!lock_name)
 		lock_name = wq->name;
 
-	wq->lock_name = lock_name;
 	wq->lockdep_map = &wq->__lockdep_map;
 	lockdep_init_map(wq->lockdep_map, lock_name, &wq->key, 0);
 }
@@ -4934,8 +4932,8 @@ static void wq_free_lockdep(struct workqueue_struct *wq)
 	if (wq->lockdep_map != &wq->__lockdep_map)
 		return;
 
-	if (wq->lock_name != wq->name)
-		kfree(wq->lock_name);
+	if (wq->lockdep_map->name != wq->name)
+		kfree(wq->lockdep_map->name);
 }
 #else
 static void wq_init_lockdep(struct workqueue_struct *wq)
