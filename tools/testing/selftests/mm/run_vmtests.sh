@@ -93,6 +93,9 @@ separated by spaces:
 	test rmap behaves as expected
 - memory-failure
 	test memory-failure behaves as expected
+- hwpoison-panic
+	(destructive) verify panic_on_unrecoverable_memory_failure crashes
+	the kernel when a hwpoison hits a kernel-owned (PG_reserved) page
 
 example: ./run_vmtests.sh -t "hmm mmap ksm"
 EOF
@@ -403,6 +406,7 @@ CATEGORY="hugetlb" run_test ./hugetlb-soft-offline
 echo "$nr_hugepages_tmp" > /proc/sys/vm/nr_hugepages
 echo "$enable_soft_offline" > /proc/sys/vm/enable_soft_offline
 CATEGORY="hugetlb" run_test ./hugetlb-read-hwpoison
+CATEGORY="hwpoison-panic" RUN_DESTRUCTIVE=1 run_test ./hwpoison-panic.sh
 fi
 
 if [ $VADDR64 -ne 0 ]; then
