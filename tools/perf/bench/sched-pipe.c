@@ -48,6 +48,7 @@ static	int			loops = LOOPS_DEFAULT;
 static bool			threaded;
 
 static bool			nonblocking;
+static unsigned int		write_size = sizeof(int);
 static char			*cgrp_names[2];
 static struct cgroup		*cgrps[2];
 
@@ -88,6 +89,9 @@ static const struct option options[] = {
 	OPT_BOOLEAN('n', "nonblocking",	&nonblocking,	"Use non-blocking operations"),
 	OPT_INTEGER('l', "loop",	&loops,		"Specify number of loops"),
 	OPT_BOOLEAN('T', "threaded",	&threaded,	"Specify threads/process based task setup"),
+	OPT_UINTEGER('s', "write-size", &write_size,
+		     "Bytes per ping-pong write (default sizeof(int)). Use larger "
+		     "values to exercise the pipe page-allocation path."),
 	OPT_CALLBACK('G', "cgroups", NULL, "SEND,RECV",
 		     "Put sender and receivers in given cgroups",
 		     parse_two_cgroups),
@@ -170,16 +174,16 @@ static void exit_cgroup(int nr)
 	free(cgrp_names[nr]);
 }
 
-static inline int read_pipe(struct thread_data *td)
+static inline int read_pipe(struct thread_data *td, char *buf)
 {
-	int ret, m;
+	int ret;
 retry:
 	if (nonblocking) {
 		ret = epoll_wait(td->epoll_fd, &td->epoll_ev, 1, -1);
 		if (ret < 0)
 			return ret;
 	}
-	ret = read(td->pipe_read, &m, sizeof(int));
+	ret = read(td->pipe_read, buf, write_size);
 	if (nonblocking && ret < 0 && errno == EWOULDBLOCK)
 		goto retry;
 	return ret;
@@ -188,13 +192,17 @@ retry:
 static void *worker_thread(void *__tdata)
 {
 	struct thread_data *td = __tdata;
-	int i, ret, m = 0;
+	int i, ret;
+	char *buf;
 
 	ret = enter_cgroup(td->nr);
 	if (ret < 0) {
 		td->cgroup_failed = true;
 		return NULL;
 	}
+
+	buf = calloc(1, write_size);
+	BUG_ON(!buf);
 
 	if (nonblocking) {
 		td->epoll_ev.events = EPOLLIN;
@@ -204,12 +212,13 @@ static void *worker_thread(void *__tdata)
 	}
 
 	for (i = 0; i < loops; i++) {
-		ret = write(td->pipe_write, &m, sizeof(int));
-		BUG_ON(ret != sizeof(int));
-		ret = read_pipe(td);
-		BUG_ON(ret != sizeof(int));
+		ret = write(td->pipe_write, buf, write_size);
+		BUG_ON(ret != (int)write_size);
+		ret = read_pipe(td, buf);
+		BUG_ON(ret != (int)write_size);
 	}
 
+	free(buf);
 	return NULL;
 }
 
