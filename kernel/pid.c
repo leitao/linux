@@ -107,17 +107,13 @@ static void delayed_put_pid(struct rcu_head *rhp)
 	put_pid(pid);
 }
 
-void free_pid(struct pid *pid)
+/* Drop pid_allocated and remove the pid from each level's idr. */
+static void __free_pid(struct pid *pid)
 {
 	int i;
-	struct pid_namespace *active_ns;
 
-	lockdep_assert_not_held(&tasklist_lock);
+	lockdep_assert_held(&pidmap_lock);
 
-	active_ns = pid->numbers[pid->level].ns;
-	ns_ref_active_put(active_ns);
-
-	spin_lock(&pidmap_lock);
 	for (i = 0; i <= pid->level; i++) {
 		struct upid *upid = pid->numbers + i;
 		struct pid_namespace *ns = upid->ns;
@@ -138,6 +134,16 @@ void free_pid(struct pid *pid)
 
 		idr_remove(&ns->idr, upid->nr);
 	}
+}
+
+void free_pid(struct pid *pid)
+{
+	lockdep_assert_not_held(&tasklist_lock);
+
+	ns_ref_active_put(pid->numbers[pid->level].ns);
+
+	spin_lock(&pidmap_lock);
+	__free_pid(pid);
 	spin_unlock(&pidmap_lock);
 
 	pidfs_remove_pid(pid);
