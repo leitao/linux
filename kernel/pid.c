@@ -155,11 +155,24 @@ void free_pids(struct pid **pids)
 	int tmp;
 
 	/*
-	 * This can batch pidmap_lock.
+	 * release_task() retires up to PIDTYPE_MAX pids per task here.
+	 * Take pidmap_lock once for the whole batch instead of once per pid.
 	 */
 	for (tmp = PIDTYPE_MAX; --tmp >= 0; )
 		if (pids[tmp])
-			free_pid(pids[tmp]);
+			ns_ref_active_put(pids[tmp]->numbers[pids[tmp]->level].ns);
+
+	spin_lock(&pidmap_lock);
+	for (tmp = PIDTYPE_MAX; --tmp >= 0; )
+		if (pids[tmp])
+			__free_pid(pids[tmp]);
+	spin_unlock(&pidmap_lock);
+
+	for (tmp = PIDTYPE_MAX; --tmp >= 0; )
+		if (pids[tmp]) {
+			pidfs_remove_pid(pids[tmp]);
+			call_rcu(&pids[tmp]->rcu, delayed_put_pid);
+		}
 }
 
 struct pid *alloc_pid(struct pid_namespace *ns, pid_t *arg_set_tid,
