@@ -1310,6 +1310,18 @@ static bool kick_pool(struct worker_pool *pool)
 		}
 	}
 #endif
+	/*
+	 * Claim @worker under pool->lock so it cannot race idle_cull_fn():
+	 * once @worker is off pool->idle_list and no longer WORKER_IDLE,
+	 * set_worker_dying() will skip it and the cull walk cannot reach
+	 * it.  Otherwise, the woken worker remains WORKER_IDLE on
+	 * pool->idle_list until it actually schedules in and runs
+	 * worker_leave_idle() in worker_thread:woke_up:, leaving a window
+	 * where a concurrent idle_cull_fn() can flag it WORKER_DIE and
+	 * kthread_stop_put() it before it consumes pool->worklist,
+	 * stranding the just-enqueued work.
+	 */
+	worker_leave_idle(worker);
 	wake_up_process(p);
 	return true;
 }
@@ -3447,7 +3459,13 @@ woke_up:
 		return 0;
 	}
 
-	worker_leave_idle(worker);
+	/*
+	 * Kicked workers have already been removed from pool->idle_list
+	 * by kick_pool(); only first-time wakeups (via create_worker())
+	 * still arrive with WORKER_IDLE set.
+	 */
+	if (worker->flags & WORKER_IDLE)
+		worker_leave_idle(worker);
 recheck:
 	/* no more worker necessary? */
 	if (!need_more_worker(pool))
