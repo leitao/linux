@@ -1657,6 +1657,10 @@ static struct sk_buff *find_skb(struct netpoll *np, int len, int reserve)
 	int count = 0;
 	struct sk_buff *skb;
 
+	/* Pool holds MAX_SKB_SIZE skbs; larger requests cannot be served. */
+	if (WARN_ON_ONCE(len > MAX_SKB_SIZE))
+		return NULL;
+
 	netpoll_zap_completion_queue();
 repeat:
 
