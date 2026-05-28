@@ -2141,18 +2141,32 @@ static void netconsole_write_basic(struct console *con __always_unused,
 	netconsole_write(wctxt, false);
 }
 
+/*
+ * nbcon device_lock/device_unlock callbacks.
+ *
+ * target_list is RCU-protected for readers (see netconsole_write()), so
+ * these callbacks no longer need target_list_lock to keep the list stable.
+ * Unlike uart consoles, netconsole has no hardware-side accessor (no
+ * interactive shell, no terminal ioctls, no shared device state) that must
+ * be serialized against printk, so there is nothing to mutually exclude
+ * between device_lock() holders either.
+ *
+ * What the nbcon write_thread path still needs at this scope is IRQs off:
+ * netpoll_send_udp() WARNs if irqs_disabled() is false on non-RT, and on
+ * non-RT IRQs-off implies preempt-off, which is in turn required for the
+ * per-CPU ownership check in nbcon_owner_matches() (see also cant_migrate()
+ * in nbcon_emit_one()).
+ */
 static void netconsole_device_lock(struct console *con __always_unused,
 				   unsigned long *flags)
-__acquires(&target_list_lock)
 {
-	spin_lock_irqsave(&target_list_lock, *flags);
+	local_irq_save(*flags);
 }
 
 static void netconsole_device_unlock(struct console *con __always_unused,
 				     unsigned long flags)
-__releases(&target_list_lock)
 {
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	local_irq_restore(flags);
 }
 
 static int netconsole_parser_cmdline(struct netpoll *np, char *opt)
