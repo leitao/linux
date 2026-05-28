@@ -326,22 +326,20 @@ static void process_resume_target(struct work_struct *work)
 		spin_unlock_irqrestore(&target_list_lock, flags);
 		goto out_unlock;
 	}
-
-	/* resume_target is IRQ unsafe, remove target from
-	 * target_list in order to resume it with IRQ enabled.
-	 */
-	list_del_init(&nt->list);
 	spin_unlock_irqrestore(&target_list_lock, flags);
 
+	/* Keep nt on target_list across resume_target(): netpoll_setup()
+	 * sleeps and drops rtnl, so NETDEV_UNREGISTER must still find us.
+	 */
 	resume_target(nt);
 
-	/* At this point the target is either enabled or disabled and
-	 * was cleaned up before getting deactivated. Either way, add it
-	 * back to target list.
-	 */
+	/* Cleanup may have nulled np.dev while rtnl was dropped; demote. */
+	mutex_lock(&target_cleanup_list_lock);
 	spin_lock_irqsave(&target_list_lock, flags);
-	list_add(&nt->list, &target_list);
+	if (nt->state == STATE_ENABLED && !nt->np.dev)
+		nt->state = STATE_DISABLED;
 	spin_unlock_irqrestore(&target_list_lock, flags);
+	mutex_unlock(&target_cleanup_list_lock);
 
 out_unlock:
 	dynamic_netconsole_mutex_unlock();
