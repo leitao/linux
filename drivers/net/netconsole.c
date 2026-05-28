@@ -2104,6 +2104,7 @@ static void netconsole_write(struct nbcon_write_context *wctxt, bool extended)
 	 * drop_netconsole_target() waits for a grace period before the
 	 * target is freed.
 	 */
+	rcu_read_lock();
 	list_for_each_entry_rcu(nt, &target_list, list) {
 		if (nt->extended != extended || nt->state != STATE_ENABLED ||
 		    !netif_running(nt->np.dev))
@@ -2113,8 +2114,10 @@ static void netconsole_write(struct nbcon_write_context *wctxt, bool extended)
 		 * lost the ownership, and iterating over the targets will not
 		 * be able to re-acquire.
 		 */
-		if (!nbcon_enter_unsafe(wctxt))
+		if (!nbcon_enter_unsafe(wctxt)) {
+			rcu_read_unlock();
 			return;
+		}
 
 		if (extended)
 			send_ext_msg_udp(nt, wctxt);
@@ -2123,6 +2126,7 @@ static void netconsole_write(struct nbcon_write_context *wctxt, bool extended)
 
 		nbcon_exit_unsafe(wctxt);
 	}
+	rcu_read_unlock();
 }
 
 static void netconsole_write_ext(struct console *con __always_unused,
