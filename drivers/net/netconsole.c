@@ -340,7 +340,7 @@ static void process_resume_target(struct work_struct *work)
 	 * back to target list.
 	 */
 	spin_lock_irqsave(&target_list_lock, flags);
-	list_add(&nt->list, &target_list);
+	list_add_rcu(&nt->list, &target_list);
 	spin_unlock_irqrestore(&target_list_lock, flags);
 
 out_unlock:
@@ -396,7 +396,8 @@ static void netconsole_process_cleanups_core(void)
 		 * locks
 		 */
 		spin_lock_irqsave(&target_list_lock, flags);
-		list_move(&nt->list, &target_list);
+		list_del(&nt->list);
+		list_add_rcu(&nt->list, &target_list);
 		spin_unlock_irqrestore(&target_list_lock, flags);
 	}
 	WARN_ON_ONCE(!list_empty(&target_cleanup_list));
@@ -746,10 +747,14 @@ static ssize_t enabled_store(struct config_item *item,
 		mutex_lock(&target_cleanup_list_lock);
 		spin_lock_irqsave(&target_list_lock, flags);
 		nt->state = STATE_DISABLED;
-		/* Remove the target from the list, while holding
-		 * target_list_lock
+		/* Remove the target from target_list, while holding
+		 * target_list_lock. list_del_rcu() lets the lockless
+		 * write_atomic walker (netconsole_write()) finish any
+		 * in-flight iteration safely; target_cleanup_list is not
+		 * walked locklessly, so the add side stays plain.
 		 */
-		list_move(&nt->list, &target_cleanup_list);
+		list_del_rcu(&nt->list);
+		list_add(&nt->list, &target_cleanup_list);
 		spin_unlock_irqrestore(&target_list_lock, flags);
 		mutex_unlock(&target_cleanup_list_lock);
 		/* Unregister consoles, whose the last target of that type got
@@ -1438,7 +1443,7 @@ static struct config_group *make_netconsole_target(struct config_group *group,
 
 	/* Adding, but it is disabled */
 	spin_lock_irqsave(&target_list_lock, flags);
-	list_add(&nt->list, &target_list);
+	list_add_rcu(&nt->list, &target_list);
 	spin_unlock_irqrestore(&target_list_lock, flags);
 
 	return &nt->group;
@@ -1458,10 +1463,17 @@ static void drop_netconsole_target(struct config_group *group,
 	 */
 	if (nt->state == STATE_DEACTIVATED)
 		nt->state = STATE_DISABLED;
-	list_del(&nt->list);
+	list_del_rcu(&nt->list);
 	spin_unlock_irqrestore(&target_list_lock, flags);
 
 	dynamic_netconsole_mutex_unlock();
+
+	/* Wait for an RCU grace period so any in-flight lockless
+	 * netconsole_write() walker (the nbcon write_atomic / panic path)
+	 * has finished iterating target_list before nt is freed below via
+	 * config_item_put().
+	 */
+	synchronize_rcu();
 
 	/* Now that the target has been marked disabled no further work
 	 * can be scheduled. Existing work will skip as targets are not
@@ -1602,12 +1614,14 @@ static int netconsole_netdev_event(struct notifier_block *this,
 				 * resumed when the interface is brought up.
 				 */
 				nt->state = STATE_DISABLED;
-				list_move(&nt->list, &target_cleanup_list);
+				list_del_rcu(&nt->list);
+				list_add(&nt->list, &target_cleanup_list);
 				stopped = true;
 				break;
 			case NETDEV_UNREGISTER:
 				nt->state = STATE_DEACTIVATED;
-				list_move(&nt->list, &target_cleanup_list);
+				list_del_rcu(&nt->list);
+				list_add(&nt->list, &target_cleanup_list);
 				stopped = true;
 			}
 		}
@@ -2083,7 +2097,14 @@ static void netconsole_write(struct nbcon_write_context *wctxt, bool extended)
 	if (oops_only && !oops_in_progress)
 		return;
 
-	list_for_each_entry(nt, &target_list, list) {
+	/* This callback is registered as the nbcon write_atomic hook with
+	 * CON_NBCON_ATOMIC_UNSAFE, so it can be invoked from panic / NMI
+	 * context where target_list_lock cannot be acquired. Iterate
+	 * target_list under RCU instead: writers use list_*_rcu() and
+	 * drop_netconsole_target() waits for a grace period before the
+	 * target is freed.
+	 */
+	list_for_each_entry_rcu(nt, &target_list, list) {
 		if (nt->extended != extended || nt->state != STATE_ENABLED ||
 		    !netif_running(nt->np.dev))
 			continue;
@@ -2336,7 +2357,7 @@ static int __init init_netconsole(void)
 			}
 
 			spin_lock_irqsave(&target_list_lock, flags);
-			list_add(&nt->list, &target_list);
+			list_add_rcu(&nt->list, &target_list);
 			spin_unlock_irqrestore(&target_list_lock, flags);
 			count++;
 		}
