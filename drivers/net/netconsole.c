@@ -744,18 +744,25 @@ static ssize_t enabled_store(struct config_item *item,
 		 * otherwise we might end up in write_msg() with
 		 * nt->np.dev == NULL and nt->state == STATE_ENABLED
 		 */
-		mutex_lock(&target_cleanup_list_lock);
 		spin_lock_irqsave(&target_list_lock, flags);
 		nt->state = STATE_DISABLED;
-		/* Remove the target from target_list, while holding
-		 * target_list_lock. list_del_rcu() lets the lockless
-		 * write_atomic walker (netconsole_write()) finish any
-		 * in-flight iteration safely; target_cleanup_list is not
-		 * walked locklessly, so the add side stays plain.
-		 */
 		list_del_rcu(&nt->list);
-		list_add(&nt->list, &target_cleanup_list);
 		spin_unlock_irqrestore(&target_list_lock, flags);
+
+		/*
+		 * Wait for any in-flight lockless reader of target_list (the
+		 * nbcon write_thread / write_atomic walker in netconsole_write())
+		 * to finish iterating past @nt before we reuse nt->list to splice
+		 * it into target_cleanup_list. Without this grace period, a
+		 * concurrent list_add() into target_cleanup_list would overwrite
+		 * nt->list.next while a paused RCU walker still relies on its
+		 * previous value, causing the walker to step off target_list into
+		 * target_cleanup_list and oops.
+		 */
+		synchronize_rcu();
+
+		mutex_lock(&target_cleanup_list_lock);
+		list_add(&nt->list, &target_cleanup_list);
 		mutex_unlock(&target_cleanup_list_lock);
 		/* Unregister consoles, whose the last target of that type got
 		 * disabled.
@@ -1597,34 +1604,16 @@ static int netconsole_netdev_event(struct notifier_block *this,
 	      event == NETDEV_REGISTER))
 		goto done;
 
-	mutex_lock(&target_cleanup_list_lock);
+	/*
+	 * First pass: handle events that do not move @nt to
+	 * target_cleanup_list. Holding target_list_lock here is fine
+	 * because we do not relink @nt.
+	 */
 	spin_lock_irqsave(&target_list_lock, flags);
 	list_for_each_entry_safe(nt, tmp, &target_list, list) {
 		netconsole_target_get(nt);
-		if (nt->np.dev == dev) {
-			switch (event) {
-			case NETDEV_CHANGENAME:
-				strscpy(nt->np.dev_name, dev->name, IFNAMSIZ);
-				break;
-			case NETDEV_RELEASE:
-			case NETDEV_JOIN:
-				/* transition target to DISABLED instead of
-				 * DEACTIVATED when (de)enslaving devices as
-				 * their targets should not be automatically
-				 * resumed when the interface is brought up.
-				 */
-				nt->state = STATE_DISABLED;
-				list_del_rcu(&nt->list);
-				list_add(&nt->list, &target_cleanup_list);
-				stopped = true;
-				break;
-			case NETDEV_UNREGISTER:
-				nt->state = STATE_DEACTIVATED;
-				list_del_rcu(&nt->list);
-				list_add(&nt->list, &target_cleanup_list);
-				stopped = true;
-			}
-		}
+		if (nt->np.dev == dev && event == NETDEV_CHANGENAME)
+			strscpy(nt->np.dev_name, dev->name, IFNAMSIZ);
 		if ((event == NETDEV_REGISTER || event == NETDEV_CHANGENAME) &&
 		    deactivated_target_match(nt, dev))
 			/* Schedule resume on a workqueue as it will attempt
@@ -1635,7 +1624,53 @@ static int netconsole_netdev_event(struct notifier_block *this,
 		netconsole_target_put(nt);
 	}
 	spin_unlock_irqrestore(&target_list_lock, flags);
+
+	/*
+	 * Second pass: events that detach @nt from target_list and splice
+	 * it onto target_cleanup_list. Moving @nt between the two lists
+	 * via the same nt->list field requires an RCU grace period between
+	 * list_del_rcu() and list_add(), otherwise a concurrent RCU walker
+	 * in netconsole_write() that paused at @nt would observe its
+	 * nt->list.next being rewritten by list_add() and step off into
+	 * target_cleanup_list (potentially onto freed memory). Drop
+	 * target_list_lock around synchronize_rcu(); the restart loop
+	 * re-scans target_list each iteration to tolerate concurrent
+	 * mutations.
+	 */
+	if (event != NETDEV_RELEASE && event != NETDEV_JOIN &&
+	    event != NETDEV_UNREGISTER)
+		goto skip_detach;
+
+	mutex_lock(&target_cleanup_list_lock);
+	for (;;) {
+		struct netconsole_target *victim = NULL;
+
+		spin_lock_irqsave(&target_list_lock, flags);
+		list_for_each_entry(nt, &target_list, list) {
+			if (nt->np.dev != dev)
+				continue;
+			netconsole_target_get(nt);
+			if (event == NETDEV_UNREGISTER)
+				nt->state = STATE_DEACTIVATED;
+			else
+				nt->state = STATE_DISABLED;
+			list_del_rcu(&nt->list);
+			victim = nt;
+			break;
+		}
+		spin_unlock_irqrestore(&target_list_lock, flags);
+
+		if (!victim)
+			break;
+
+		synchronize_rcu();
+		list_add(&victim->list, &target_cleanup_list);
+		netconsole_target_put(victim);
+		stopped = true;
+	}
 	mutex_unlock(&target_cleanup_list_lock);
+
+skip_detach:
 
 	if (stopped) {
 		const char *msg = "had an event";
