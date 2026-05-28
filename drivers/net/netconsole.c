@@ -1665,7 +1665,9 @@ repeat:
 	skb = alloc_skb(len, GFP_ATOMIC);
 	if (!skb) {
 		skb = skb_dequeue(&np->skb_pool);
-		schedule_work(&np->refill_wq);
+		/* schedule_work() is not NMI-safe; refill is best-effort. */
+		if (!in_nmi())
+			schedule_work(&np->refill_wq);
 	}
 
 	if (!skb) {
