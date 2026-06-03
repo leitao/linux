@@ -7,6 +7,13 @@
  * pool->lock contention under different affinity scope configurations
  * (e.g., cache vs cache_shard).
  *
+ * Each producer thread submits its whole batch of work items back to back
+ * (one distinct work_struct per item, no per-item wait), so many items stay
+ * in flight at once and several CPUs hammer the same pool->lock concurrently.
+ * This is the contended, batched-submit workload the wakeup-deferral path is
+ * meant to speed up -- a synchronous one-item-at-a-time ping-pong would block
+ * each producer on completion and never build up the lock contention.
+ *
  * The affinity scope is changed between runs via the workqueue's sysfs
  * affinity_scope attribute (WQ_SYSFS).
  *
@@ -42,24 +49,71 @@ module_param(wq_items, int, 0444);
 MODULE_PARM_DESC(wq_items,
 		 "Number of work items each thread queues (default: 50000)");
 
+/*
+ * Submission mode:
+ *
+ *   batch    - each producer submits its whole run of work items back to
+ *              back without waiting, so many items are in flight at once and
+ *              several CPUs contend for the same pool->lock concurrently.
+ *              Stresses pool->lock / enqueue throughput (default).
+ *
+ *   pingpong - each producer queues one item and waits for it to complete
+ *              before queuing the next.  At most nr_threads items are ever
+ *              in flight, so this measures the producer<->worker scheduling
+ *              round-trip latency rather than pool->lock contention.
+ */
+enum bench_mode {
+	MODE_BATCH,
+	MODE_PINGPONG,
+};
+
+static char *mode = "batch";
+module_param(mode, charp, 0444);
+MODULE_PARM_DESC(mode,
+		 "Submission mode: 'batch' (default) or 'pingpong'");
+
+static enum bench_mode bench_mode = MODE_BATCH;
+
 static struct workqueue_struct *bench_wq;
-static atomic_t threads_done;
+static atomic_t run_remaining;
 static DECLARE_COMPLETION(start_comp);
 static DECLARE_COMPLETION(all_done_comp);
 
-struct thread_ctx {
-	struct completion work_done;
+struct thread_ctx;
+
+struct bench_work {
 	struct work_struct work;
+	struct thread_ctx *ctx;
+};
+
+struct thread_ctx {
+	struct bench_work *works;
 	u64 *latencies;
+	struct completion work_done;	/* pingpong: per-item completion */
 	int cpu;
 	int items;
 };
 
 static void bench_work_fn(struct work_struct *work)
 {
-	struct thread_ctx *ctx = container_of(work, struct thread_ctx, work);
+	struct bench_work *bw = container_of(work, struct bench_work, work);
 
-	complete(&ctx->work_done);
+	/*
+	 * In pingpong mode the producer is blocked waiting on this exact item;
+	 * wake it so it can submit the next one.
+	 */
+	if (bench_mode == MODE_PINGPONG) {
+		complete(&bw->ctx->work_done);
+		return;
+	}
+
+	/*
+	 * Batch mode: the work itself is intentionally trivial so the benchmark
+	 * stays dominated by queue_work()/pool->lock cost, not by the payload.
+	 * The last item to execute across all producers ends the run.
+	 */
+	if (atomic_dec_and_test(&run_remaining))
+		complete(&all_done_comp);
 }
 
 static int bench_kthread_fn(void *data)
@@ -75,18 +129,34 @@ static int bench_kthread_fn(void *data)
 		return 0;
 
 	for (i = 0; i < ctx->items; i++) {
-		reinit_completion(&ctx->work_done);
-		INIT_WORK(&ctx->work, bench_work_fn);
+		/*
+		 * batch:    one distinct work_struct per item, all in flight.
+		 * pingpong: reuse a single work_struct, one item at a time.
+		 */
+		struct bench_work *bw = (bench_mode == MODE_BATCH) ?
+					&ctx->works[i] : &ctx->works[0];
+
+		if (bench_mode == MODE_PINGPONG)
+			reinit_completion(&ctx->work_done);
+
+		INIT_WORK(&bw->work, bench_work_fn);
 
 		t_start = ktime_get();
-		queue_work(bench_wq, &ctx->work);
+		queue_work(bench_wq, &bw->work);
 		t_end = ktime_get();
 
 		ctx->latencies[i] = ktime_to_ns(ktime_sub(t_end, t_start));
-		wait_for_completion(&ctx->work_done);
+
+		if (bench_mode == MODE_PINGPONG)
+			wait_for_completion(&ctx->work_done);
 	}
 
-	if (atomic_dec_and_test(&threads_done))
+	/*
+	 * In pingpong mode every item has already completed synchronously, so
+	 * the last producer to finish its run ends the benchmark.  (In batch
+	 * mode the run is ended by the last work item in bench_work_fn().)
+	 */
+	if (bench_mode == MODE_PINGPONG && atomic_dec_and_test(&run_remaining))
 		complete(&all_done_comp);
 
 	/*
@@ -144,6 +214,7 @@ static int __init run_bench(int n_threads, const char *scope, const char *label)
 	ktime_t start, end;
 	int cpu, i, j, ret;
 	s64 elapsed_us;
+	int n_works;
 
 	ret = set_affn_scope(scope);
 	if (ret)
@@ -160,6 +231,19 @@ static int __init run_bench(int n_threads, const char *scope, const char *label)
 	}
 
 	total_items = (unsigned long)n_threads * wq_items;
+	/* run_remaining is an atomic_t; keep the in-flight count in range */
+	if (total_items > INT_MAX) {
+		kfree(tasks);
+		kfree(ctxs);
+		return -EINVAL;
+	}
+
+	/*
+	 * batch keeps every item in flight, so it needs one work_struct per
+	 * item; pingpong reuses a single one per producer.
+	 */
+	n_works = (bench_mode == MODE_BATCH) ? wq_items : 1;
+
 	all_latencies = kvmalloc_array(total_items, sizeof(u64), GFP_KERNEL);
 	if (!all_latencies) {
 		kfree(tasks);
@@ -167,21 +251,40 @@ static int __init run_bench(int n_threads, const char *scope, const char *label)
 		return -ENOMEM;
 	}
 
-	/* Allocate per-thread latency arrays */
+	/* Allocate per-thread latency and work-item arrays */
 	for (i = 0; i < n_threads; i++) {
+		int w;
+
 		ctxs[i].latencies = kvmalloc_array(wq_items, sizeof(u64),
 						   GFP_KERNEL);
-		if (!ctxs[i].latencies) {
-			while (--i >= 0)
+		ctxs[i].works = ctxs[i].latencies ?
+			kvmalloc_array(n_works, sizeof(*ctxs[i].works),
+				       GFP_KERNEL) : NULL;
+		if (!ctxs[i].latencies || !ctxs[i].works) {
+			kvfree(ctxs[i].works);
+			kvfree(ctxs[i].latencies);
+			while (--i >= 0) {
+				kvfree(ctxs[i].works);
 				kvfree(ctxs[i].latencies);
+			}
 			kvfree(all_latencies);
 			kfree(tasks);
 			kfree(ctxs);
 			return -ENOMEM;
 		}
+
+		/* Back-pointer lets bench_work_fn() find its producer */
+		for (w = 0; w < n_works; w++)
+			ctxs[i].works[w].ctx = &ctxs[i];
+		init_completion(&ctxs[i].work_done);
 	}
 
-	atomic_set(&threads_done, n_threads);
+	/*
+	 * batch:    counted down by each work item as it executes.
+	 * pingpong: counted down by each producer as it finishes its run.
+	 */
+	atomic_set(&run_remaining,
+		   bench_mode == MODE_BATCH ? total_items : n_threads);
 	reinit_completion(&all_done_comp);
 	reinit_completion(&start_comp);
 
@@ -193,7 +296,6 @@ static int __init run_bench(int n_threads, const char *scope, const char *label)
 
 		ctxs[i].cpu = cpu;
 		ctxs[i].items = wq_items;
-		init_completion(&ctxs[i].work_done);
 
 		tasks[i] = kthread_create(bench_kthread_fn, &ctxs[i],
 					  "wq_bench/%d", cpu);
@@ -217,18 +319,17 @@ static int __init run_bench(int n_threads, const char *scope, const char *label)
 	start = ktime_get();
 	complete_all(&start_comp);
 
-	/* Wait for all threads to finish the benchmark */
+	/* Wait for every queued work item to execute, then stop the clock */
 	wait_for_completion(&all_done_comp);
+	end = ktime_get();
+	elapsed_us = ktime_us_delta(end, start);
 
-	/* Drain any remaining work */
+	/* Drain any remaining work before freeing the work_struct arrays */
 	flush_workqueue(bench_wq);
 
 	/* Ensure all kthreads have fully exited before module memory is freed */
 	for (i = 0; i < n_threads; i++)
 		kthread_stop(tasks[i]);
-
-	end = ktime_get();
-	elapsed_us = ktime_us_delta(end, start);
 
 	/* Merge all per-thread latencies and sort for percentile calculation */
 	j = 0;
@@ -249,8 +350,10 @@ static int __init run_bench(int n_threads, const char *scope, const char *label)
 
 	ret = 0;
 out_free:
-	for (i = 0; i < n_threads; i++)
+	for (i = 0; i < n_threads; i++) {
+		kvfree(ctxs[i].works);
 		kvfree(ctxs[i].latencies);
+	}
 	kvfree(all_latencies);
 	kfree(tasks);
 	kfree(ctxs);
@@ -272,12 +375,22 @@ static int __init test_workqueue_init(void)
 		return -EINVAL;
 	}
 
+	if (!strcmp(mode, "batch")) {
+		bench_mode = MODE_BATCH;
+	} else if (!strcmp(mode, "pingpong")) {
+		bench_mode = MODE_PINGPONG;
+	} else {
+		pr_err("test_workqueue: invalid mode '%s' (use 'batch' or 'pingpong')\n",
+		       mode);
+		return -EINVAL;
+	}
+
 	bench_wq = alloc_workqueue(WQ_NAME, WQ_UNBOUND | WQ_SYSFS, 0);
 	if (!bench_wq)
 		return -ENOMEM;
 
-	pr_info("test_workqueue: running %d threads, %d items/thread\n",
-		n_threads, wq_items);
+	pr_info("test_workqueue: running %d threads, %d items/thread, mode=%s\n",
+		n_threads, wq_items, mode);
 
 	for (i = 0; i < ARRAY_SIZE(bench_scopes); i++)
 		run_bench(n_threads, bench_scopes[i], bench_scopes[i]);
