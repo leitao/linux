@@ -440,7 +440,13 @@ struct slub_percpu_sheaves {
  */
 struct kmem_cache_node {
 	spinlock_t list_lock;
-	unsigned long nr_partial;
+	/*
+	 * Keep list_lock on its own cacheline. Putting nr_partial/partial
+	 * next to it caused false sharing between contenders for the lock
+	 * and readers/writers of the partial list head (perf c2c showed
+	 * thousands of Local+Remote HITM events per second on the line).
+	 */
+	unsigned long nr_partial ____cacheline_aligned_in_smp;
 	struct list_head partial;
 #ifdef CONFIG_SLUB_DEBUG
 	atomic_long_t nr_slabs;
