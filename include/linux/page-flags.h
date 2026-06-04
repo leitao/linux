@@ -679,7 +679,7 @@ FOLIO_FLAG_FALSE(idle)
  * PagePrezeroed() tracks pages known to be zero.  The allocator
  * uses this to skip redundant zeroing in post_alloc_hook().
  */
-__PAGEFLAG(Prezeroed, prezeroed, PF_NO_COMPOUND)
+__PAGEFLAG(Prezeroed, prezeroed, PF_ANY)
 
 /*
  * PageReported() is used to track reported free pages within the Buddy
