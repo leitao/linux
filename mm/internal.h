@@ -1432,6 +1432,14 @@ static inline int unmap_poisoned_folio(struct folio *folio, unsigned long pfn, b
 }
 #endif
 
+#ifdef CONFIG_MEMORY_FAILURE_KHO
+void hwpoison_kho_record(unsigned long pfn);
+void hwpoison_kho_unrecord(unsigned long pfn);
+#else
+static inline void hwpoison_kho_record(unsigned long pfn) { }
+static inline void hwpoison_kho_unrecord(unsigned long pfn) { }
+#endif
+
 extern unsigned long  __must_check vm_mmap_pgoff(struct file *, unsigned long,
         unsigned long, unsigned long,
         unsigned long, unsigned long);
