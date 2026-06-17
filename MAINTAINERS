@@ -12038,6 +12038,7 @@ M:	Miaohe Lin <linmiaohe@huawei.com>
 R:	Naoya Horiguchi <nao.horiguchi@gmail.com>
 L:	linux-mm@kvack.org
 S:	Maintained
+F:	Documentation/admin-guide/mm/hwpoison-kho.rst
 F:	include/linux/kho/abi/hwpoison.h
 F:	include/linux/memory-failure.h
 F:	include/trace/events/memory-failure.h
