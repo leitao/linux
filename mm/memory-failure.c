@@ -84,13 +84,16 @@ void num_poisoned_pages_inc(unsigned long pfn)
 {
 	atomic_long_inc(&num_poisoned_pages);
 	memblk_nr_poison_inc(pfn);
+	hwpoison_kho_record(pfn);
 }
 
 void num_poisoned_pages_sub(unsigned long pfn, long i)
 {
 	atomic_long_sub(i, &num_poisoned_pages);
-	if (pfn != -1UL)
+	if (pfn != -1UL) {
 		memblk_nr_poison_sub(pfn, i);
+		hwpoison_kho_unrecord(pfn);
+	}
 }
 
 /**

@@ -785,6 +785,20 @@ config MEMORY_FAILURE
 	  even when some of its memory has uncorrected errors. This requires
 	  special hardware support and typically ECC memory.
 
+config MEMORY_FAILURE_KHO
+	bool "Persist hwpoison PFN list across kexec via KHO"
+	depends on MEMORY_FAILURE && KEXEC_HANDOVER
+	default KEXEC_HANDOVER
+	help
+	  When a page is hard-offlined due to an uncorrectable memory error,
+	  the kernel marks it PG_hwpoison and keeps it out of the allocator
+	  for the rest of the boot. Without this option the next kexec'd
+	  kernel does not know about those pages and will hand them back
+	  out from the buddy allocator.
+
+	  Say Y to record each successful hard-offline event in a KHO
+	  subtree and re-poison those PFNs early in the next kernel.
+
 config HWPOISON_INJECT
 	tristate "HWPoison pages injector"
 	depends on MEMORY_FAILURE && DEBUG_KERNEL && PROC_FS
