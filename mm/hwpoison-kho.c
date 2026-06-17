@@ -14,6 +14,7 @@
 
 #define pr_fmt(fmt) "hwpoison-kho: " fmt
 
+#include <linux/init.h>
 #include <linux/kexec_handover.h>
 #include <linux/kho/abi/hwpoison.h>
 #include <linux/mm.h>
@@ -31,6 +32,7 @@ struct hwpoison_kho {
 	u64 capacity;
 	struct kho_hwpoison_metadata *hdr;
 	bool published;
+	bool replaying;
 };
 
 static struct hwpoison_kho hk = {
@@ -41,7 +43,7 @@ static int hwpoison_kho_publish(void)
 {
 	int err;
 
-	if (hk.published)
+	if (hk.replaying || hk.published)
 		return 0;
 
 	err = kho_add_subtree(KHO_HWPOISON_NODE_NAME, hk.hdr, sizeof(*hk.hdr));
@@ -153,3 +155,73 @@ void hwpoison_kho_unrecord(unsigned long pfn)
 		return;
 	}
 }
+
+static void __init hwpoison_kho_replay(const struct kho_hwpoison_metadata *src)
+{
+	u64 count = src->count;
+	u64 *pfns, i;
+
+	pfns = kho_restore_vmalloc(&src->pfns);
+	if (!pfns)
+		return;
+
+	pr_info("re-poisoning %llu pages from previous kernel\n", count);
+
+	scoped_guard(mutex, &hk.lock)
+		hk.replaying = true;
+
+	for (i = 0; i < count; i++) {
+		int err = memory_failure(pfns[i], 0);
+
+		if (err && err != -EHWPOISON)
+			pr_warn("re-poison PFN %#llx failed: %d\n",
+				pfns[i], err);
+	}
+
+	scoped_guard(mutex, &hk.lock) {
+		hk.replaying = false;
+		hwpoison_kho_publish();
+	}
+
+	vfree(pfns);
+}
+
+static int __init hwpoison_kho_init(void)
+{
+	const struct kho_hwpoison_metadata *src;
+	phys_addr_t phys;
+	size_t size;
+	int err;
+
+	if (!kho_is_enabled())
+		return 0;
+
+	err = kho_retrieve_subtree(KHO_HWPOISON_NODE_NAME, &phys, &size);
+	if (err == -ENOENT)
+		return 0;
+	if (err) {
+		pr_warn("retrieve failed: %d\n", err);
+		return 0;
+	}
+
+	if (size < sizeof(u32)) {
+		pr_warn("blob too small (%zu bytes)\n", size);
+		return 0;
+	}
+
+	src = phys_to_virt(phys);
+	if (src->version != KHO_HWPOISON_METADATA_VERSION) {
+		pr_warn("metadata version %u not supported (expected %u)\n",
+			src->version, KHO_HWPOISON_METADATA_VERSION);
+		return 0;
+	}
+	if (size < sizeof(*src)) {
+		pr_warn("blob too small for v%u (%zu < %zu)\n",
+			src->version, size, sizeof(*src));
+		return 0;
+	}
+
+	hwpoison_kho_replay(src);
+	return 0;
+}
+late_initcall(hwpoison_kho_init);
