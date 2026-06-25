@@ -2302,6 +2302,7 @@ static void __queue_work(int cpu, struct workqueue_struct *wq,
 {
 	struct pool_workqueue *pwq;
 	struct worker_pool *last_pool, *pool;
+	struct task_struct *wake_task = NULL;
 	unsigned int work_flags;
 	unsigned int req_cpu = cpu;
 
@@ -2424,7 +2425,13 @@ retry:
 
 		trace_workqueue_activate_work(work);
 		insert_work(pwq, work, &pool->worklist, work_flags);
-		kick_pool(pool);
+
+		/*
+		 * Select and claim the worker under pool->lock (incl. wake_cpu
+		 * setup); the wakeup is deferred until after the lock is dropped,
+		 * where the enclosing rcu_read_lock() keeps the task valid.
+		 */
+		kick_pool_pick(pool, &wake_task);
 	} else {
 		work_flags |= WORK_STRUCT_INACTIVE;
 		insert_work(pwq, work, &pwq->inactive_works, work_flags);
@@ -2432,6 +2439,9 @@ retry:
 
 out:
 	raw_spin_unlock(&pool->lock);
+	/* Wakeup protected by existing rcu_read_lock() from function entry */
+	if (wake_task)
+		wake_up_process(wake_task);
 	rcu_read_unlock();
 }
 
