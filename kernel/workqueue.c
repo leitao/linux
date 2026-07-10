@@ -5705,12 +5705,7 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 
 	if (!(wq->flags & WQ_UNBOUND)) {
 		ret = alloc_and_link_percpu_pwqs(wq);
-		if (ret)
-			goto enomem;
-		return 0;
-	}
-
-	if (wq->flags & __WQ_ORDERED) {
+	} else if (wq->flags & __WQ_ORDERED) {
 		struct pool_workqueue *dfl_pwq;
 
 		ret = apply_workqueue_attrs_locked(wq, ordered_wq_attrs[highpri]);
