@@ -5656,6 +5656,20 @@ out_unlock:
 	put_pwq_unlocked(old_pwq);
 }
 
+/* Return the static per-cpu worker_pool that backs @wq on @cpu. */
+static struct worker_pool *get_percpu_pool(struct workqueue_struct *wq, int cpu)
+{
+	bool highpri = wq->flags & WQ_HIGHPRI;
+	struct worker_pool __percpu *pools;
+
+	if (wq->flags & WQ_BH)
+		pools = bh_worker_pools;
+	else
+		pools = cpu_worker_pools;
+
+	return &per_cpu_ptr(pools, cpu)[highpri];
+}
+
 static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 {
 	bool highpri = wq->flags & WQ_HIGHPRI;
@@ -5668,19 +5682,9 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 		goto enomem;
 
 	if (!(wq->flags & WQ_UNBOUND)) {
-		struct worker_pool __percpu *pools;
-
-		if (wq->flags & WQ_BH)
-			pools = bh_worker_pools;
-		else
-			pools = cpu_worker_pools;
-
 		for_each_possible_cpu(cpu) {
-			struct pool_workqueue **pwq_p;
-			struct worker_pool *pool;
-
-			pool = &(per_cpu_ptr(pools, cpu)[highpri]);
-			pwq_p = per_cpu_ptr(wq->cpu_pwq, cpu);
+			struct pool_workqueue **pwq_p = per_cpu_ptr(wq->cpu_pwq, cpu);
+			struct worker_pool *pool = get_percpu_pool(wq, cpu);
 
 			*pwq_p = kmem_cache_alloc_node(pwq_cache, GFP_KERNEL,
 						       pool->node);
