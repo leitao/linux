@@ -5375,7 +5375,11 @@ static struct worker_pool *get_percpu_pool(struct workqueue_struct *wq, int cpu)
 	return &per_cpu_ptr(pools, cpu)[highpri];
 }
 
-/* obtain a pool matching @attr and create a pwq associating the pool and @wq */
+/*
+ * Obtain the pool backing @wq and create a pwq associating the pool and @wq.
+ * A WQ_AFFN_PERCPU workqueue uses the static per-cpu pool for the pod's CPU;
+ * any other scope uses an unbound pool matching @attrs.
+ */
 static struct pool_workqueue *alloc_unbound_pwq(struct workqueue_struct *wq,
 					const struct workqueue_attrs *attrs)
 {
@@ -5384,13 +5388,17 @@ static struct pool_workqueue *alloc_unbound_pwq(struct workqueue_struct *wq,
 
 	lockdep_assert_held(&wq_pool_mutex);
 
-	pool = get_unbound_pool(attrs);
+	if (attrs->affn_scope == WQ_AFFN_PERCPU)
+		pool = get_percpu_pool(wq, cpumask_first(attrs->__pod_cpumask));
+	else
+		pool = get_unbound_pool(attrs);
 	if (!pool)
 		return NULL;
 
 	pwq = kmem_cache_alloc_node(pwq_cache, GFP_KERNEL, pool->node);
 	if (!pwq) {
-		put_unbound_pool(pool);
+		if (pool->cpu < 0)
+			put_unbound_pool(pool);
 		return NULL;
 	}
 
