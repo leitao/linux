@@ -4,8 +4,9 @@
  * Test module for stress and performance analysis of workqueue.
  *
  * Benchmarks queue_work() throughput on an unbound workqueue to measure
- * pool->lock contention under different affinity scope configurations
- * (e.g., cache vs cache_shard).
+ * pool->lock contention under different affinity scope configurations,
+ * including the percpu scope that backs the pwqs with the static per-cpu
+ * pools (e.g., percpu vs cache vs system).
  *
  * The affinity scope is changed between runs via the workqueue's sysfs
  * affinity_scope attribute (WQ_SYSFS).
@@ -259,7 +260,7 @@ out_free:
 }
 
 static const char * const bench_scopes[] = {
-	"cpu", "smt", "cache_shard", "cache", "numa", "system",
+	"percpu", "cpu", "smt", "cache_shard", "cache", "numa", "system",
 };
 
 static int __init test_workqueue_init(void)
