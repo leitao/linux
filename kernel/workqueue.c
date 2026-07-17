@@ -423,6 +423,7 @@ static const char * const wq_affn_names[WQ_AFFN_NR_TYPES] = {
 	[WQ_AFFN_CACHE_SHARD]	= "cache_shard",
 	[WQ_AFFN_NUMA]		= "numa",
 	[WQ_AFFN_SYSTEM]	= "system",
+	[WQ_AFFN_PERCPU]	= "percpu",
 };
 
 /*
@@ -8541,6 +8542,7 @@ void __init workqueue_init_topology(void)
 	precompute_cache_shard_ids();
 	init_pod_type(&wq_pod_types[WQ_AFFN_CACHE_SHARD], cpus_share_cache_shard);
 	init_pod_type(&wq_pod_types[WQ_AFFN_NUMA], cpus_share_numa);
+	init_pod_type(&wq_pod_types[WQ_AFFN_PERCPU], cpus_dont_share);
 
 	wq_topo_initialized = true;
 

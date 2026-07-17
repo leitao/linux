@@ -136,6 +136,7 @@ enum wq_affn_scope {
 	WQ_AFFN_CACHE_SHARD,		/* synthetic sub-LLC shards */
 	WQ_AFFN_NUMA,			/* one pod per NUMA node */
 	WQ_AFFN_SYSTEM,			/* one pod across the whole system */
+	WQ_AFFN_PERCPU,			/* one pod per CPU, backed by the per-cpu pool */
 
 	WQ_AFFN_NR_TYPES,
 };
