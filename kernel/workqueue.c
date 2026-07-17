@@ -5244,6 +5244,12 @@ fail:
 	return NULL;
 }
 
+/* True if @pool is tied to a specific CPU, rather than an unbound pool. */
+static bool is_pool_cpu_specific(struct worker_pool *pool)
+{
+	return pool->cpu >= 0;
+}
+
 /*
  * Scheduled on pwq_release_worker by put_pwq() when an unbound pwq hits zero
  * refcnt and needs to be destroyed.
@@ -5274,7 +5280,11 @@ static void pwq_release_workfn(struct kthread_work *work)
 		mutex_unlock(&wq->mutex);
 	}
 
-	if (wq->flags & WQ_UNBOUND) {
+	/*
+	 * Release only refcounted unbound pools; the static per-cpu pools
+	 * are permanent, even when an unbound wq is backed by one.
+	 */
+	if (!is_pool_cpu_specific(pool)) {
 		mutex_lock(&wq_pool_mutex);
 		put_unbound_pool(pool);
 		mutex_unlock(&wq_pool_mutex);
