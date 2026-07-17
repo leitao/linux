@@ -517,6 +517,9 @@ static struct workqueue_attrs *unbound_std_wq_attrs[NR_STD_WORKER_POOLS];
 /* I: attributes used when instantiating ordered pools on demand */
 static struct workqueue_attrs *ordered_wq_attrs[NR_STD_WORKER_POOLS];
 
+/* I: attributes used to install percpu workqueues on the per-cpu pools */
+static struct workqueue_attrs *percpu_wq_attrs[NR_STD_WORKER_POOLS];
+
 /*
  * I: kthread_worker to release pwq's. pwq release needs to be bounced to a
  * process context while holding a pool lock. Bounce to a dedicated kthread
@@ -1641,15 +1644,21 @@ static struct wq_node_nr_active *wq_node_nr_active(struct workqueue_struct *wq,
  */
 static void wq_update_node_max_active(struct workqueue_struct *wq, int off_cpu)
 {
-	struct cpumask *effective = unbound_effective_cpumask(wq);
+	struct cpumask *effective;
 	int min_active = READ_ONCE(wq->min_active);
 	int max_active = READ_ONCE(wq->max_active);
 	int total_cpus, node;
 
 	lockdep_assert_held(&wq->mutex);
 
+	/* percpu workqueues account nr_active per-cpu, not per-node */
+	if (!(wq->flags & WQ_UNBOUND))
+		return;
+
 	if (!wq_topo_initialized)
 		return;
+
+	effective = unbound_effective_cpumask(wq);
 
 	if (off_cpu >= 0 && !cpumask_test_cpu(off_cpu, effective))
 		off_cpu = -1;
@@ -5422,8 +5431,20 @@ static struct pool_workqueue *alloc_unbound_pwq(struct workqueue_struct *wq,
  */
 static void wq_calc_pod_cpumask(struct workqueue_attrs *attrs, int cpu)
 {
-	const struct wq_pod_type *pt = wqattrs_pod_type(attrs);
-	int pod = pt->cpu_pod[cpu];
+	const struct wq_pod_type *pt;
+	int pod;
+
+	/*
+	 * The percpu scope pins one pod per CPU, so it is correct even before
+	 * workqueue_init_topology() has set up the pod types.
+	 */
+	if (attrs->affn_scope == WQ_AFFN_PERCPU) {
+		cpumask_copy(attrs->__pod_cpumask, cpumask_of(cpu));
+		return;
+	}
+
+	pt = wqattrs_pod_type(attrs);
+	pod = pt->cpu_pod[cpu];
 
 	/* calculate possible CPUs in @pod that @attrs wants */
 	cpumask_and(attrs->__pod_cpumask, pt->pod_cpus[pod], attrs->cpumask);
@@ -5574,8 +5595,8 @@ static int apply_workqueue_attrs_locked(struct workqueue_struct *wq,
 {
 	struct apply_wqattrs_ctx *ctx;
 
-	/* only unbound workqueues can change attributes */
-	if (WARN_ON(!(wq->flags & WQ_UNBOUND)))
+	/* unbound and percpu (via the percpu scope) workqueues install here */
+	if (WARN_ON(!(wq->flags & (WQ_UNBOUND | WQ_PERCPU))))
 		return -EINVAL;
 
 	ctx = apply_wqattrs_prepare(wq, attrs, wq_unbound_cpumask);
@@ -5696,7 +5717,11 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 	if (!wq->cpu_pwq)
 		goto enomem;
 
-	if (!(wq->flags & WQ_UNBOUND)) {
+	if (wq->flags & WQ_BH) {
+		/*
+		 * BH workqueues run in softirq context; keep them on the
+		 * direct per-cpu pool path.
+		 */
 		for_each_possible_cpu(cpu) {
 			struct pool_workqueue **pwq_p = per_cpu_ptr(wq->cpu_pwq, cpu);
 			struct worker_pool *pool = get_percpu_pool(wq, cpu);
@@ -5712,6 +5737,14 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 			link_pwq(*pwq_p);
 			mutex_unlock(&wq->mutex);
 		}
+		return 0;
+	}
+
+	if (!(wq->flags & WQ_UNBOUND)) {
+		/* percpu workqueues install through the percpu affinity scope */
+		ret = apply_workqueue_attrs_locked(wq, percpu_wq_attrs[highpri]);
+		if (ret)
+			goto enomem;
 		return 0;
 	}
 
@@ -5904,7 +5937,12 @@ static struct workqueue_struct *__alloc_workqueue(const char *fmt,
 	if (!wq)
 		return NULL;
 
-	if (flags & WQ_UNBOUND) {
+	/*
+	 * Percpu (non-BH) workqueues install through the percpu affinity
+	 * scope, which uses the unbound apply path, so they need
+	 * unbound_attrs too. BH workqueues stay on the direct path.
+	 */
+	if (!(flags & WQ_BH)) {
 		wq->unbound_attrs = alloc_workqueue_attrs_noprof();
 		if (!wq->unbound_attrs)
 			goto err_free_wq;
@@ -8181,6 +8219,13 @@ void __init workqueue_init_early(void)
 		attrs->nice = std_nice[i];
 		attrs->ordered = true;
 		ordered_wq_attrs[i] = attrs;
+
+		BUG_ON(!(attrs = alloc_workqueue_attrs()));
+		attrs->nice = std_nice[i];
+		attrs->affn_scope = WQ_AFFN_PERCPU;
+		attrs->affn_strict = true;
+		cpumask_copy(attrs->cpumask, cpu_possible_mask);
+		percpu_wq_attrs[i] = attrs;
 	}
 
 	system_wq = alloc_workqueue("events", WQ_PERCPU | __WQ_DEPRECATED, 0);
