@@ -521,8 +521,13 @@ acpi_ds_create_field(union acpi_parse_object *op,
 		return_ACPI_STATUS(status);
 	}
 
+	/*
+	 * The PCC buffer hangs off the region object and is shared by every
+	 * field declared against that region, so allocate it only once.
+	 */
 	if (info.region_node->object->region.space_id ==
-	    ACPI_ADR_SPACE_PLATFORM_COMM) {
+	    ACPI_ADR_SPACE_PLATFORM_COMM &&
+	    !region_node->object->field.internal_pcc_buffer) {
 		region_node->object->field.internal_pcc_buffer =
 		    ACPI_ALLOCATE_ZEROED(info.region_node->object->region.
 					 length);
