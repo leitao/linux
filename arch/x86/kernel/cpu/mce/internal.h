@@ -182,6 +182,7 @@ struct mca_config {
 	bool cmci_disabled;
 	bool ignore_ce;
 	bool print_all;
+	bool panic_on_storm;
 
 	int monarch_timeout;
 	int panic_timeout;

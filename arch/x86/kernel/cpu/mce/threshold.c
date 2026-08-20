@@ -157,6 +157,14 @@ void mce_track_storm(struct mce *mce)
 		if (hweight64(history) < STORM_BEGIN_THRESHOLD)
 			return;
 		printk_deferred(KERN_NOTICE "CPU%d BANK%d CMCI storm detected\n", smp_processor_id(), mce->bank);
+		/*
+		 * A sustained corrected error rate can precede undetected
+		 * corruption from the same unit. Optionally take the machine
+		 * down at that point rather than keep running on it.
+		 */
+		if (mca_cfg.panic_on_storm)
+			panic("CMCI storm on CPU%d BANK%d",
+			      smp_processor_id(), mce->bank);
 		mce_handle_storm(mce->bank, true);
 		cmci_storm_begin(mce->bank);
 	}

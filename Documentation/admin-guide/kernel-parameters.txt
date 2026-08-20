@@ -3924,6 +3924,18 @@ Kernel parameters
 		print_all
 			print all machine check logs to the console.
 
+		panic_on_storm
+			panic when a corrected error storm is detected on a
+			machine check bank, instead of only throttling the
+			corrected error interrupt for that bank.
+
+			Off by default. Corrected errors are, by definition,
+			errors the hardware repaired, and a storm is commonly
+			just a failing DRAM row. Enable this only where a
+			suspect unit is considered more dangerous than the
+			outage, for example when a storm on a core-internal
+			bank may also be producing undetected corruption.
+
 		monarchtimeout (number)
 			sets the time in us to wait for other CPUs on machine
 			checks. 0 to disable.

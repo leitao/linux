@@ -2326,6 +2326,7 @@ void mce_disable_bank(int bank)
  * mce=nobootlog Don't log MCEs from before booting.
  * mce=bios_cmci_threshold Don't program the CMCI threshold
  * mce=recovery force enable copy_mc_fragile()
+ * mce=panic_on_storm Panic when a corrected error storm is detected
  */
 static int __init mcheck_enable(char *str)
 {
@@ -2349,6 +2350,8 @@ static int __init mcheck_enable(char *str)
 		cfg->print_all = true;
 	else if (!strcmp(str, "ignore_ce"))
 		cfg->ignore_ce = true;
+	else if (!strcmp(str, "panic_on_storm"))
+		cfg->panic_on_storm = true;
 	else if (!strcmp(str, "bootlog") || !strcmp(str, "nobootlog"))
 		cfg->bootlog = (str[0] == 'b');
 	else if (!strcmp(str, "bios_cmci_threshold"))
