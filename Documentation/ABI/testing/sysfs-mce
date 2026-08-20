@@ -95,3 +95,14 @@ Contact:	Hidetoshi Seto <seto.hidetoshi@jp.fujitsu.com>
 Date:		Jun 2009
 Description:
 		Disables the CMCI feature.
+
+What:		/sys/devices/system/machinecheck/machinecheckX/panic_on_storm
+Contact:	Breno Leitao <leitao@debian.org>
+Date:		Aug 2026
+Description:
+		Panic when a corrected error storm is detected on a machine
+		check bank, instead of only throttling the corrected error
+		interrupt for that bank. Off by default.
+
+		The setting is global, not per-CPU, and takes effect on the
+		next storm detected on any CPU.

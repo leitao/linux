@@ -2622,6 +2622,7 @@ static ssize_t store_int_with_restart(struct device *s,
 static DEVICE_INT_ATTR(monarch_timeout, 0644, mca_cfg.monarch_timeout);
 static DEVICE_BOOL_ATTR(dont_log_ce, 0644, mca_cfg.dont_log_ce);
 static DEVICE_BOOL_ATTR(print_all, 0644, mca_cfg.print_all);
+static DEVICE_BOOL_ATTR(panic_on_storm, 0644, mca_cfg.panic_on_storm);
 
 static struct dev_ext_attribute dev_attr_check_interval = {
 	__ATTR(check_interval, 0644, device_show_int, store_int_with_restart),
@@ -2646,6 +2647,7 @@ static struct device_attribute *mce_device_attrs[] = {
 	&dev_attr_monarch_timeout.attr,
 	&dev_attr_dont_log_ce.attr,
 	&dev_attr_print_all.attr,
+	&dev_attr_panic_on_storm.attr,
 	&dev_attr_ignore_ce.attr,
 	&dev_attr_cmci_disabled.attr,
 	NULL
